@@ -143,6 +143,26 @@ fn token_stream_mentions_identifier(tokens: TokenStream, forbidden_identifier: &
     })
 }
 
+fn token_stream_contains_root_item_macro(tokens: &[TokenTree]) -> bool {
+    tokens.iter().enumerate().any(|(index, token)| {
+        if !matches!(token, TokenTree::Punct(punctuation) if punctuation.as_char() == '!') {
+            return false;
+        }
+        let previous = index
+            .checked_sub(1)
+            .and_then(|previous| tokens.get(previous));
+        if matches!(previous, Some(TokenTree::Punct(punctuation)) if punctuation.as_char() == '#') {
+            return false;
+        }
+
+        (matches!(previous, Some(TokenTree::Ident(_)))
+            && matches!(tokens.get(index + 1), Some(TokenTree::Group(_))))
+            || (matches!(previous, Some(token) if token_is_identifier(token, "macro_rules"))
+                && matches!(tokens.get(index + 1), Some(TokenTree::Ident(_)))
+                && matches!(tokens.get(index + 2), Some(TokenTree::Group(_))))
+    })
+}
+
 fn binary_root_declares_expected_modules(source: &str) -> bool {
     let Ok(tokens) = source.parse::<TokenStream>() else {
         return false;
@@ -152,6 +172,9 @@ fn binary_root_declares_expected_modules(source: &str) -> bool {
     }
 
     let tokens = tokens.into_iter().collect::<Vec<_>>();
+    if token_stream_contains_root_item_macro(&tokens) {
+        return false;
+    }
     let mut modules = Vec::new();
 
     for (index, token) in tokens.iter().enumerate() {
@@ -285,7 +308,7 @@ fn external_rust_inclusion_detection_is_token_aware() {
 #[test]
 fn binary_module_root_detection_requires_conventional_modules() {
     assert!(binary_root_declares_expected_modules(
-        "mod application; mod error; mod presentation;"
+        "mod application; mod error; mod presentation; fn example() { println!(\"ok\"); } fn diverges() -> ! { loop {} }"
     ));
 
     for source in [
@@ -293,6 +316,7 @@ fn binary_module_root_detection_requires_conventional_modules() {
         "mod application; #[cfg(any())] mod error; mod presentation;",
         "mod application; mod error {} mod presentation;",
         "mod application; mod error; mod presentation; mod unchecked;",
+        "macro_rules! extra { () => { mod unchecked; } } extra!(); mod application; mod error; mod presentation;",
     ] {
         assert!(
             !binary_root_declares_expected_modules(source),
