@@ -1,6 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use syn::visit::Visit;
+use syn::{ItemUse, Path as RustPath, UseTree};
+
 fn rust_sources_under(directory: &Path) -> Vec<PathBuf> {
     let mut sources = Vec::new();
     let mut pending = vec![directory.to_owned()];
@@ -23,9 +26,10 @@ fn assert_sources_do_not_depend_on(paths: &[PathBuf], forbidden_module: &str) {
     let violations = paths
         .iter()
         .filter(|path| {
-            fs::read_to_string(path)
-                .expect("Rust source should be readable")
-                .contains(forbidden_module)
+            let source = fs::read_to_string(path).expect("Rust source should be readable");
+            source_depends_on(&source, forbidden_module).unwrap_or_else(|error| {
+                panic!("{} should contain valid Rust: {error}", path.display())
+            })
         })
         .collect::<Vec<_>>();
 
@@ -33,6 +37,101 @@ fn assert_sources_do_not_depend_on(paths: &[PathBuf], forbidden_module: &str) {
         violations.is_empty(),
         "lower-level modules must not depend on {forbidden_module}: {violations:?}"
     );
+}
+
+fn source_depends_on(source: &str, forbidden_module: &str) -> syn::Result<bool> {
+    let forbidden_segments = forbidden_module.split("::").collect::<Vec<_>>();
+    let syntax = syn::parse_file(source)?;
+    let mut visitor = DependencyVisitor {
+        forbidden_segments: &forbidden_segments,
+        found: false,
+    };
+    visitor.visit_file(&syntax);
+    Ok(visitor.found)
+}
+
+struct DependencyVisitor<'a> {
+    forbidden_segments: &'a [&'a str],
+    found: bool,
+}
+
+impl DependencyVisitor<'_> {
+    fn matches_segments<'a>(&self, segments: impl IntoIterator<Item = &'a str>) -> bool {
+        let mut actual = segments.into_iter();
+        self.forbidden_segments
+            .iter()
+            .all(|expected| actual.next() == Some(*expected))
+    }
+
+    fn visit_use_tree(&mut self, tree: &UseTree, mut prefix: Vec<String>) {
+        match tree {
+            UseTree::Path(path) => {
+                prefix.push(path.ident.to_string());
+                self.visit_use_tree(&path.tree, prefix);
+            }
+            UseTree::Name(name) => {
+                prefix.push(name.ident.to_string());
+                self.found |= self.matches_segments(prefix.iter().map(String::as_str));
+            }
+            UseTree::Rename(rename) => {
+                prefix.push(rename.ident.to_string());
+                self.found |= self.matches_segments(prefix.iter().map(String::as_str));
+            }
+            UseTree::Glob(_) => {
+                self.found |= self.matches_segments(prefix.iter().map(String::as_str));
+            }
+            UseTree::Group(group) => {
+                for item in &group.items {
+                    self.visit_use_tree(item, prefix.clone());
+                }
+            }
+        }
+    }
+}
+
+impl<'ast> Visit<'ast> for DependencyVisitor<'_> {
+    fn visit_item_use(&mut self, node: &'ast ItemUse) {
+        self.visit_use_tree(&node.tree, Vec::new());
+    }
+
+    fn visit_path(&mut self, node: &'ast RustPath) {
+        let segments = node
+            .segments
+            .iter()
+            .map(|segment| segment.ident.to_string())
+            .collect::<Vec<_>>();
+        self.found |= self.matches_segments(segments.iter().map(String::as_str));
+        syn::visit::visit_path(self, node);
+    }
+}
+
+#[test]
+fn dependency_detection_covers_grouped_imports() {
+    for source in [
+        "use crate::{application::CliError, protocol};",
+        "use crate::{protocol, application::CliError};",
+        "use crate::{application as app, protocol};",
+        "fn example() { let _ = crate::application::run; }",
+    ] {
+        assert!(
+            source_depends_on(source, "crate::application").expect("fixture should parse"),
+            "dependency should be detected in {source}"
+        );
+    }
+}
+
+#[test]
+fn dependency_detection_ignores_similar_names_and_text() {
+    for source in [
+        "use crate::{application_support::CliError, protocol};",
+        "const EXAMPLE: &str = \"crate::application::CliError\";",
+        "// use crate::{application::CliError};",
+    ] {
+        assert!(
+            !source_depends_on(source, "crate::application").expect("fixture should parse"),
+            "dependency should not be detected in {source}"
+        );
+    }
 }
 
 #[test]
