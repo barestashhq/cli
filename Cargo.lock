@@ -275,7 +275,6 @@ dependencies = [
  "keyring",
  "keyring-core",
  "predicates",
- "proc-macro2",
  "reqwest",
  "secret-service",
  "serde",
