@@ -21,6 +21,44 @@ fn rust_sources_under(directory: &Path) -> Vec<PathBuf> {
     sources
 }
 
+fn rust_sources_for_module(source_root: &Path, module: &str) -> Vec<PathBuf> {
+    let mut sources = vec![source_root.join(format!("{module}.rs"))];
+    let child_directory = source_root.join(module);
+    if child_directory.is_dir() {
+        sources.extend(rust_sources_under(&child_directory));
+    }
+    sources
+}
+
+#[test]
+fn module_source_collection_includes_root_and_descendants() {
+    let workspace = tempfile::tempdir().expect("temporary workspace should be created");
+    let source_root = workspace.path().join("src");
+    let module_directory = source_root.join("domain");
+    fs::create_dir_all(module_directory.join("nested"))
+        .expect("module directories should be created");
+    for path in [
+        source_root.join("domain.rs"),
+        module_directory.join("child.rs"),
+        module_directory.join("nested/grandchild.rs"),
+    ] {
+        fs::write(path, "").expect("fixture source should be written");
+    }
+    fs::write(module_directory.join("ignored.txt"), "")
+        .expect("non-Rust fixture should be written");
+
+    let mut sources = rust_sources_for_module(&source_root, "domain");
+    sources.sort();
+    let mut expected = vec![
+        source_root.join("domain.rs"),
+        module_directory.join("child.rs"),
+        module_directory.join("nested/grandchild.rs"),
+    ];
+    expected.sort();
+
+    assert_eq!(sources, expected);
+}
+
 fn assert_sources_do_not_reference_layer(paths: &[PathBuf], forbidden_layer: &str) {
     let violations = paths
         .iter()
@@ -375,12 +413,10 @@ fn library_crate_contains_only_lower_layers() {
 #[test]
 fn lower_library_layers_follow_the_dependency_order() {
     let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let protocol_sources = vec![source_root.join("protocol.rs")];
-    let domain_sources = vec![source_root.join("domain.rs")];
-    let mut cli_sources = rust_sources_under(&source_root.join("cli"));
-    cli_sources.push(source_root.join("cli.rs"));
-    let mut infrastructure_sources = rust_sources_under(&source_root.join("infrastructure"));
-    infrastructure_sources.push(source_root.join("infrastructure.rs"));
+    let protocol_sources = rust_sources_for_module(&source_root, "protocol");
+    let domain_sources = rust_sources_for_module(&source_root, "domain");
+    let cli_sources = rust_sources_for_module(&source_root, "cli");
+    let infrastructure_sources = rust_sources_for_module(&source_root, "infrastructure");
 
     for forbidden in ["cli", "domain", "infrastructure"] {
         assert_sources_do_not_reference_layer(&protocol_sources, forbidden);
@@ -406,9 +442,8 @@ fn lower_library_layers_follow_the_dependency_order() {
 fn binary_layers_follow_the_dependency_order() {
     let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let main_sources = vec![source_root.join("main.rs")];
-    let error_sources = vec![source_root.join("error.rs")];
-    let mut presentation_sources = rust_sources_under(&source_root.join("presentation"));
-    presentation_sources.push(source_root.join("presentation.rs"));
+    let error_sources = rust_sources_for_module(&source_root, "error");
+    let presentation_sources = rust_sources_for_module(&source_root, "presentation");
 
     for forbidden in ["application", "presentation"] {
         assert_sources_do_not_reference_layer(&error_sources, forbidden);
