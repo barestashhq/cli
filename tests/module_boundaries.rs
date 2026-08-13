@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use syn::visit::Visit;
-use syn::{Item, ItemMod, ItemUse, Path as RustPath, UseTree};
+use syn::{Block, Item, ItemMod, ItemUse, Path as RustPath, Stmt, UseTree};
 
 fn rust_sources_under(directory: &Path) -> Vec<PathBuf> {
     let mut sources = Vec::new();
@@ -77,6 +77,16 @@ fn crate_root_aliases(items: &[Item]) -> HashSet<String> {
     let mut aliases = HashSet::new();
     for item in items {
         if let Item::Use(item_use) = item {
+            collect_crate_root_aliases(&item_use.tree, &mut Vec::new(), &mut aliases);
+        }
+    }
+    aliases
+}
+
+fn block_crate_root_aliases(statements: &[Stmt]) -> HashSet<String> {
+    let mut aliases = HashSet::new();
+    for statement in statements {
+        if let Stmt::Item(Item::Use(item_use)) = statement {
             collect_crate_root_aliases(&item_use.tree, &mut Vec::new(), &mut aliases);
         }
     }
@@ -198,6 +208,14 @@ impl DependencyVisitor<'_> {
 }
 
 impl<'ast> Visit<'ast> for DependencyVisitor<'_> {
+    fn visit_block(&mut self, node: &'ast Block) {
+        let mut scoped_aliases = self.crate_root_aliases.clone();
+        scoped_aliases.extend(block_crate_root_aliases(&node.stmts));
+        let parent_aliases = std::mem::replace(&mut self.crate_root_aliases, scoped_aliases);
+        syn::visit::visit_block(self, node);
+        self.crate_root_aliases = parent_aliases;
+    }
+
     fn visit_item_mod(&mut self, node: &'ast ItemMod) {
         if let Some((_, items)) = &node.content {
             self.current_module.push(node.ident.to_string());
@@ -273,6 +291,22 @@ fn dependency_detection_covers_crate_root_aliases() {
             source_depends_on(source, "crate::application", &current_module)
                 .expect("fixture should parse"),
             "aliased dependency should be detected in {source}"
+        );
+    }
+}
+
+#[test]
+fn dependency_detection_covers_block_scoped_crate_aliases() {
+    let current_module = ["crate", "presentation", "output"].map(str::to_owned);
+    for source in [
+        "fn example() { use crate as root; let _ = root::application::run; }",
+        "fn example() { let _ = root::application::run; use crate as root; }",
+        "fn example() { { use crate::{self as root}; let _ = root::application::run; } }",
+    ] {
+        assert!(
+            source_depends_on(source, "crate::application", &current_module)
+                .expect("fixture should parse"),
+            "block-scoped aliased dependency should be detected in {source}"
         );
     }
 }
