@@ -2,7 +2,7 @@ use std::io::{self, Write};
 
 use serde::Serialize;
 
-use crate::application::CliError;
+use crate::error::CliError;
 use crate::presentation::renderer::sanitize_terminal_text;
 
 pub fn print_lines(lines: impl IntoIterator<Item = impl AsRef<str>>) -> Result<(), CliError> {

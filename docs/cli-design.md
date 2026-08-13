@@ -45,6 +45,7 @@ concerns separate:
 - `protocol` owns typed JSON/SSE wire contracts.
 - `domain` owns pure resolution, redaction, duration, credential, and body
   transformation rules.
+- `error` owns shared application failure values without terminal rendering.
 - `application` coordinates authentication and resource workflows without
   terminal rendering in domain logic.
 - `infrastructure` owns reqwest/rustls HTTP, secure redirects, platform

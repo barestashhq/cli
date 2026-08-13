@@ -185,10 +185,10 @@ fn enforce_user_only_permissions(path: &Path) -> Result<(), ConfigStoreError> {
 
 #[cfg(unix)]
 fn sync_parent_directory(path: &Path) {
-    if let Some(parent) = non_empty_parent(path) {
-        if let Ok(directory) = File::open(parent) {
-            let _ = directory.sync_all();
-        }
+    if let Some(parent) = non_empty_parent(path)
+        && let Ok(directory) = File::open(parent)
+    {
+        let _ = directory.sync_all();
     }
 }
 

@@ -41,12 +41,12 @@ impl TerminalCapabilities {
 }
 
 fn dimensions(interactive: bool) -> (usize, usize) {
-    if interactive {
-        if let Some((Width(width), Height(height))) = terminal_size() {
-            if width > 0 && height > 0 {
-                return (usize::from(width), usize::from(height));
-            }
-        }
+    if interactive
+        && let Some((Width(width), Height(height))) = terminal_size()
+        && width > 0
+        && height > 0
+    {
+        return (usize::from(width), usize::from(height));
     }
     (80, 24)
 }
@@ -273,10 +273,8 @@ fn render_row(
             } else {
                 pad(&value, width)
             };
-            if decorate {
-                if let Some(tone) = columns.get(index).and_then(|column| column.tone) {
-                    return renderer.decorate(&value, tone, matches!(tone, Tone::Method));
-                }
+            if decorate && let Some(tone) = columns.get(index).and_then(|column| column.tone) {
+                return renderer.decorate(&value, tone, matches!(tone, Tone::Method));
             }
             value
         })

@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use crate::application::CliError;
+use crate::error::CliError;
 use crate::presentation::renderer::{
     OutputRenderer, TableColumn, TerminalCapabilities, Tone, sanitize_terminal_text, visible_width,
 };

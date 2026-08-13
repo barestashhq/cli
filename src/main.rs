@@ -5,7 +5,7 @@ async fn main() -> ExitCode {
     match barestash::application::run().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            error.print();
+            barestash::presentation::print_cli_error(&error);
             ExitCode::from(1)
         }
     }
