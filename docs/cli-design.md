@@ -45,6 +45,7 @@ concerns separate:
 - `protocol` owns typed JSON/SSE wire contracts.
 - `domain` owns pure resolution, redaction, duration, credential, and body
   transformation rules.
+- `error` owns shared application failure values without terminal rendering.
 - `application` coordinates authentication and resource workflows without
   terminal rendering in domain logic.
 - `infrastructure` owns reqwest/rustls HTTP, secure redirects, platform
@@ -52,6 +53,10 @@ concerns separate:
   terminal/browser adapters.
 - `presentation` owns human, JSON, JSONL, and the intentionally simple tail
   view.
+
+The library crate contains only the reusable lower layers: `cli`, `protocol`,
+`domain`, and `infrastructure`. The binary crate owns `error`, `presentation`,
+and `application`, so library layers cannot import those binary-only layers.
 
 The binary never starts Node.js and no TypeScript runtime is part of release
 artifacts. The migration inventory in `rust-migration-inventory.md` records the

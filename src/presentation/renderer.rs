@@ -41,12 +41,12 @@ impl TerminalCapabilities {
 }
 
 fn dimensions(interactive: bool) -> (usize, usize) {
-    if interactive {
-        if let Some((Width(width), Height(height))) = terminal_size() {
-            if width > 0 && height > 0 {
-                return (usize::from(width), usize::from(height));
-            }
-        }
+    if interactive
+        && let Some((Width(width), Height(height))) = terminal_size()
+        && width > 0
+        && height > 0
+    {
+        return (usize::from(width), usize::from(height));
     }
     (80, 24)
 }
@@ -54,7 +54,6 @@ fn dimensions(interactive: bool) -> (usize, usize) {
 #[derive(Clone, Copy, Debug)]
 pub enum Tone {
     Accent,
-    Danger,
     Method,
     Muted,
     Success,
@@ -219,7 +218,6 @@ impl OutputRenderer {
         }
         let color = match tone {
             Tone::Accent => "\x1b[36m",
-            Tone::Danger => "\x1b[31m",
             Tone::Method => "\x1b[34m",
             Tone::Muted => "\x1b[90m",
             Tone::Success => "\x1b[32m",
@@ -273,10 +271,8 @@ fn render_row(
             } else {
                 pad(&value, width)
             };
-            if decorate {
-                if let Some(tone) = columns.get(index).and_then(|column| column.tone) {
-                    return renderer.decorate(&value, tone, matches!(tone, Tone::Method));
-                }
+            if decorate && let Some(tone) = columns.get(index).and_then(|column| column.tone) {
+                return renderer.decorate(&value, tone, matches!(tone, Tone::Method));
             }
             value
         })

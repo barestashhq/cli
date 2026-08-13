@@ -4,10 +4,9 @@ pub mod events;
 pub mod tokens;
 
 mod context;
-mod error;
 
+pub use crate::error::CliError;
 pub use context::AppContext;
-pub use error::CliError;
 
 use clap::Parser;
 
