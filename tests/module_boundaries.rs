@@ -143,6 +143,46 @@ fn token_stream_mentions_identifier(tokens: TokenStream, forbidden_identifier: &
     })
 }
 
+fn binary_root_declares_expected_modules(source: &str) -> bool {
+    let Ok(tokens) = source.parse::<TokenStream>() else {
+        return false;
+    };
+    if token_stream_includes_external_rust(tokens.clone()) {
+        return false;
+    }
+
+    let tokens = tokens.into_iter().collect::<Vec<_>>();
+    let mut modules = Vec::new();
+
+    for (index, token) in tokens.iter().enumerate() {
+        if !token_is_identifier(token, "mod") {
+            continue;
+        }
+
+        let item_start = tokens[..index]
+            .iter()
+            .rposition(|token| {
+                matches!(token, TokenTree::Punct(punctuation) if punctuation.as_char() == ';')
+                    || matches!(token, TokenTree::Group(group) if group.delimiter() == Delimiter::Brace)
+            })
+            .map_or(0, |boundary| boundary + 1);
+        if item_start != index {
+            return false;
+        }
+
+        let Some(TokenTree::Ident(module)) = tokens.get(index + 1) else {
+            return false;
+        };
+        if !matches!(tokens.get(index + 2), Some(TokenTree::Punct(punctuation)) if punctuation.as_char() == ';')
+        {
+            return false;
+        }
+        modules.push(module.to_string());
+    }
+
+    modules == ["application", "error", "presentation"]
+}
+
 #[test]
 fn identifier_detection_covers_dependency_spellings() {
     for source in [
@@ -243,6 +283,37 @@ fn external_rust_inclusion_detection_is_token_aware() {
 }
 
 #[test]
+fn binary_module_root_detection_requires_conventional_modules() {
+    assert!(binary_root_declares_expected_modules(
+        "mod application; mod error; mod presentation;"
+    ));
+
+    for source in [
+        "mod application; #[path = \"unchecked/error.rs\"] mod error; mod presentation;",
+        "mod application; #[cfg(any())] mod error; mod presentation;",
+        "mod application; mod error {} mod presentation;",
+        "mod application; mod error; mod presentation; mod unchecked;",
+    ] {
+        assert!(
+            !binary_root_declares_expected_modules(source),
+            "non-conventional binary module roots should be rejected in {source}"
+        );
+    }
+}
+
+#[test]
+fn binary_crate_uses_checked_module_roots() {
+    let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let source =
+        fs::read_to_string(source_root.join("main.rs")).expect("main.rs should be readable");
+
+    assert!(
+        binary_root_declares_expected_modules(&source),
+        "main.rs must declare only the conventional application, error, and presentation modules"
+    );
+}
+
+#[test]
 fn library_crate_contains_only_lower_layers() {
     let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let source = fs::read_to_string(source_root.join("lib.rs")).expect("lib.rs should be readable");
@@ -287,6 +358,7 @@ fn lower_library_layers_follow_the_dependency_order() {
 #[test]
 fn binary_layers_follow_the_dependency_order() {
     let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let main_sources = vec![source_root.join("main.rs")];
     let error_sources = vec![source_root.join("error.rs")];
     let mut presentation_sources = rust_sources_under(&source_root.join("presentation"));
     presentation_sources.push(source_root.join("presentation.rs"));
@@ -296,8 +368,9 @@ fn binary_layers_follow_the_dependency_order() {
     }
     assert_sources_do_not_reference_layer(&presentation_sources, "application");
 
-    let checked_sources = error_sources
+    let checked_sources = main_sources
         .into_iter()
+        .chain(error_sources)
         .chain(presentation_sources)
         .collect::<Vec<_>>();
     assert_sources_do_not_use_external_source_inclusion(&checked_sources);
