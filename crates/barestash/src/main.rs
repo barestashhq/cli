@@ -1,6 +1,6 @@
 use std::process::ExitCode;
 
-use barestash::{cli, domain, infrastructure, protocol};
+use barestash::{cli, domain, infrastructure};
 
 mod application;
 mod error;

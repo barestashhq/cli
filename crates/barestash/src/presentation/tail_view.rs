@@ -4,7 +4,7 @@ use crate::error::CliError;
 use crate::presentation::renderer::{
     OutputRenderer, TableColumn, TerminalCapabilities, Tone, sanitize_terminal_text, visible_width,
 };
-use crate::protocol::EventMetadata;
+use barestash_protocol::EventMetadata;
 
 const CLEAR_SCREEN: &str = "\x1b[2J\x1b[H";
 const RESTORE_TERMINAL: &str = "\x1b[0m\x1b[K\r\n";
@@ -215,7 +215,7 @@ fn fit_lines(lines: &[String], width: usize, height: usize) -> Vec<String> {
 mod tests {
     use std::collections::BTreeMap;
 
-    use crate::protocol::EventBodyMetadata;
+    use barestash_protocol::EventBodyMetadata;
 
     use super::*;
 

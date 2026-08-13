@@ -1,5 +1,5 @@
-use crate::infrastructure::api::ApiClientError;
-use crate::protocol::RestErrorResponse;
+use barestash_client::ApiClientError;
+use barestash_protocol::RestErrorResponse;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CliError {
@@ -21,6 +21,7 @@ impl CliError {
     pub fn from_api_client(error: ApiClientError) -> Self {
         match error {
             ApiClientError::InvalidUrl(error) => Self::Local(error.to_string()),
+            ApiClientError::InvalidLastEventId(_) => Self::Local(error.to_string()),
             ApiClientError::Api { error, .. } => Self::Api(error),
             other => Self::Connectivity(other.to_string()),
         }

@@ -9,14 +9,14 @@ use serde_json::{Value, json};
 use crate::application::{AppContext, CliError};
 use crate::cli::auth::{AuthAction, AuthCommand, AuthLoginArgs, AuthLogoutArgs, AuthStatusArgs};
 use crate::domain::StoredCredential;
-use crate::infrastructure::api::ApiClientError;
 use crate::infrastructure::browser::open_browser;
 use crate::infrastructure::credentials::CredentialWriteResult;
 use crate::infrastructure::terminal::read_stdin_to_string;
 use crate::presentation::{
     OutputRenderer, TerminalCapabilities, print_json, print_lines, sanitize_terminal_text,
 };
-use crate::protocol::{
+use barestash_client::ApiClientError;
+use barestash_protocol::{
     AUTHORIZATION_SCOPES, AccountCredential, AccountResponse, BearerTokenType,
     DeviceAuthorizationCreateRequest, DeviceAuthorizationCreateResponse, DeviceTokenRequest,
     DeviceTokenResponse, RefreshGrantType, RefreshTokenRequest, RefreshTokenResponse,
@@ -206,7 +206,7 @@ pub async fn authenticated_request_json<T: DeserializeOwned>(
     let expired_token = bearer_token(&extra_headers).map(str::to_owned);
 
     match context
-        .api
+        .api()
         .request_json(
             method.clone(),
             path,
@@ -229,7 +229,7 @@ pub async fn authenticated_request_json<T: DeserializeOwned>(
                     Ok(None) if mode == AuthMode::PublicRead => {
                         extra_headers.remove(AUTHORIZATION);
                         return context
-                            .api
+                            .api()
                             .request_json(method, path, Some(extra_headers), body)
                             .await
                             .map_err(CliError::from_api_client);
@@ -240,7 +240,7 @@ pub async fn authenticated_request_json<T: DeserializeOwned>(
                     {
                         extra_headers.remove(AUTHORIZATION);
                         return context
-                            .api
+                            .api()
                             .request_json(method, path, Some(extra_headers), body)
                             .await
                             .map_err(CliError::from_api_client);
@@ -249,7 +249,7 @@ pub async fn authenticated_request_json<T: DeserializeOwned>(
                 };
             insert_bearer(&mut extra_headers, &refreshed_token)?;
             context
-                .api
+                .api()
                 .request_json(method, path, Some(extra_headers), body)
                 .await
                 .map_err(|retry_error| match retry_error {
@@ -325,7 +325,7 @@ async fn send_raw_once(
     body: Option<Value>,
 ) -> Result<Response, ApiClientError> {
     context
-        .api
+        .api()
         .send(method, path, move |mut request| {
             request = request.headers(headers);
             if let Some(body) = body {
@@ -395,7 +395,7 @@ async fn login_with_device_authorization(
         requested_scopes: AUTHORIZATION_SCOPES.to_vec(),
     };
     let authorization: DeviceAuthorizationCreateResponse = context
-        .api
+        .api()
         .request_json(
             Method::POST,
             "/v1/auth/device/authorizations",
@@ -433,7 +433,7 @@ async fn login_with_device_authorization(
     while context.now() < expires_at {
         tokio::time::sleep(Duration::from_secs(interval)).await;
         let polled: Result<DeviceTokenResponse, ApiClientError> = context
-            .api
+            .api()
             .request_json(
                 Method::POST,
                 "/v1/auth/device/token",
@@ -673,7 +673,7 @@ async fn refresh_credential_locked(
         refresh_token,
     };
     let refreshed: RefreshTokenResponse = match context
-        .api
+        .api()
         .request_json(
             Method::POST,
             "/v1/auth/token/refresh",
@@ -755,7 +755,7 @@ async fn validate_token_without_refresh(
 ) -> Result<AccountResponse, CliError> {
     let headers = authorization_headers(Some(token.to_owned()))?;
     context
-        .api
+        .api()
         .request_json(Method::GET, "/v1/account", Some(headers), None)
         .await
         .map_err(CliError::from_api_client)
@@ -767,7 +767,7 @@ async fn revoke_cli_session_best_effort(context: &AppContext, access_token: &str
         return;
     };
     let result: Result<Value, ApiClientError> = context
-        .api
+        .api()
         .request_json(
             Method::POST,
             "/v1/auth/sessions/current/revoke",
@@ -948,7 +948,7 @@ async fn explicit_json_request<T: DeserializeOwned>(
         });
     };
     context
-        .api
+        .api()
         .request_json(method, path, Some(headers), None)
         .await
 }
@@ -1197,13 +1197,13 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use crate::infrastructure::api::{ApiClient, ApiUrlPolicy};
     use crate::infrastructure::config::FileConfigStore;
     use crate::infrastructure::credentials::{
         CredentialStore, KeyringBackend, KeyringBackendError,
     };
     use crate::infrastructure::lock::FileLock;
-    use crate::protocol::AuthorizationScope;
+    use barestash_client::{ApiClient, ApiUrlPolicy};
+    use barestash_protocol::AuthorizationScope;
 
     use super::*;
 
@@ -1291,6 +1291,7 @@ mod tests {
             env,
             api: ApiClient::new(&server.uri(), ApiUrlPolicy::default())
                 .unwrap_or_else(|error| panic!("API client: {error}")),
+            api_host_logged: std::sync::atomic::AtomicBool::new(true),
             config: FileConfigStore::new(directory.path().join("config.toml")),
             credentials: Arc::new(credentials),
             credential_lock: FileLock::new(directory.path().join("credentials.lock")),

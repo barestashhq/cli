@@ -8,7 +8,7 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::protocol::{EventId, EventStreamPayload, HeaderMap, QueryParameters};
+use barestash_protocol::{EventId, EventStreamPayload, HeaderMap, QueryParameters};
 
 pub const REDACTED_HEADER_VALUE: &str = "[REDACTED]";
 
@@ -414,7 +414,7 @@ pub fn serialize_stored_credential(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{
+    use barestash_protocol::{
         AuthorizationScope, EventStreamBody, EventStreamBodyEncoding, EventStreamRequest,
         QueryParameterValue,
     };

@@ -38,25 +38,29 @@ The command design should emphasize:
 
 ## Native implementation boundaries
 
-The shipped CLI is a native Rust binary. Its internal modules keep observable
-concerns separate:
+The repository root is a virtual Cargo workspace. Its three packages represent
+independently meaningful boundaries:
 
-- `cli` owns the clap command tree and local argument validation.
-- `protocol` owns typed JSON/SSE wire contracts.
-- `domain` owns pure resolution, redaction, duration, credential, and body
-  transformation rules.
-- `error` owns shared application failure values without terminal rendering.
-- `application` coordinates authentication and resource workflows without
-  terminal rendering in domain logic.
-- `infrastructure` owns reqwest/rustls HTTP, secure redirects, platform
-  credential stores, atomic config files, file locks, SSE byte decoding, and
-  terminal/browser adapters.
-- `presentation` owns human, JSON, JSONL, and the intentionally simple tail
-  view.
+- `barestash-protocol` owns JSON/SSE wire contracts, resource identifiers,
+  authorization scopes, bearer-token rules, and protocol-level validation. It
+  has no CLI, filesystem, terminal, browser, credential-store, or HTTP
+  transport concerns.
+- `barestash-client` owns API base URL handling, private/link-local address
+  protections, secure redirects, HTTP request and REST error decoding, and SSE
+  transport. It depends on `barestash-protocol`.
+- `barestash` owns the executable CLI: clap parsing, application orchestration,
+  human/JSON/JSONL presentation, local configuration, credential storage and
+  migration, file locking, browser/terminal adapters, and CLI-specific domain
+  transformations. It composes both library packages.
 
-The library crate contains only the reusable lower layers: `cli`, `protocol`,
-`domain`, and `infrastructure`. The binary crate owns `error`, `presentation`,
-and `application`, so library layers cannot import those binary-only layers.
+Dependencies flow from `barestash` to `barestash-client` to
+`barestash-protocol`; the CLI also uses protocol contracts directly. The
+packages do not depend back on the CLI and do not form dependency cycles.
+
+Within the executable package, `cli`, `domain`, `error`, `application`,
+`infrastructure`, and `presentation` remain separate modules. HTTP and SSE
+transport live in the client package rather than the CLI infrastructure
+module.
 
 The binary never starts Node.js and no TypeScript runtime is part of release
 artifacts. The migration inventory in `rust-migration-inventory.md` records the

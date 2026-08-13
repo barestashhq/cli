@@ -2,12 +2,13 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
+use barestash_client::{ApiClient, ApiUrlPolicy};
 use chrono::{DateTime, Utc};
 
 use crate::application::CliError;
 use crate::domain::StoredCredential;
-use crate::infrastructure::api::{ApiClient, ApiUrlPolicy};
 use crate::infrastructure::config::FileConfigStore;
 use crate::infrastructure::credentials::CredentialStore;
 use crate::infrastructure::lock::FileLock;
@@ -16,7 +17,8 @@ pub const DEFAULT_API_URL: &str = "http://localhost:8787";
 
 pub struct AppContext {
     pub env: HashMap<String, String>,
-    pub api: ApiClient,
+    pub(crate) api: ApiClient,
+    pub(crate) api_host_logged: AtomicBool,
     pub config: FileConfigStore,
     pub credentials: Arc<CredentialStore>,
     pub credential_lock: FileLock,
@@ -48,12 +50,12 @@ impl AppContext {
             .map(String::as_str)
             .unwrap_or(DEFAULT_API_URL);
         let api = ApiClient::new_deferred(api_url, ApiUrlPolicy { allow_insecure })
-            .map_err(|error| CliError::Infrastructure(error.to_string()))?
-            .with_host_diagnostic(true);
+            .map_err(|error| CliError::Infrastructure(error.to_string()))?;
 
         Ok(Self {
             env,
             api,
+            api_host_logged: AtomicBool::new(false),
             config,
             credentials: Arc::new(CredentialStore::system(
                 config_directory.join("credentials.json"),
@@ -109,6 +111,17 @@ impl AppContext {
                 Some(value.as_str())
             }
         })
+    }
+
+    /// Returns the shared API transport and emits the CLI-only host
+    /// diagnostic immediately before its first use.
+    pub(crate) fn api(&self) -> &ApiClient {
+        if let Ok(host) = self.api.api_host()
+            && !self.api_host_logged.swap(true, Ordering::AcqRel)
+        {
+            eprintln!("Barestash API host: {host}");
+        }
+        &self.api
     }
 
     pub fn now(&self) -> DateTime<Utc> {

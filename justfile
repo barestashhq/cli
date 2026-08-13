@@ -24,22 +24,24 @@ format-check:
 [doc('Run Clippy with warnings denied')]
 [group('quality')]
 lint:
-    cargo clippy --all-targets --all-features -- -D warnings
+    cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
 [doc('Run all Rust tests')]
 [group('quality')]
 test:
-    cargo test --all
+    cargo test --workspace --all-features --locked
 
 [doc('Build the native release binary')]
 [group('quality')]
 build:
-    cargo build --release --locked
+    cargo build --package barestash --release --locked
 
 [doc('Verify the Cargo package allowlist and build the release artifact locally')]
 [group('quality')]
 package: build
-    package_files="$(cargo package --locked --allow-dirty --list)"; \
+    cmp LICENSE crates/barestash/LICENSE
+    cmp THIRD_PARTY_NOTICES.md crates/barestash/THIRD_PARTY_NOTICES.md
+    package_files="$(cargo package --package barestash --locked --allow-dirty --list)"; \
       printf '%s\n' "$package_files"; \
       if printf '%s\n' "$package_files" | grep -Eq '(^|/)(node_modules|\.pnpm-store|coverage|dist)(/|$)|(^|/)(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$'; then \
         echo "Cargo package unexpectedly contains a Node.js or generated artifact." >&2; \
@@ -65,4 +67,4 @@ ci-full: ci
 [group('cli')]
 [positional-arguments]
 barestash *args:
-    cargo run --quiet -- "$@"
+    cargo run --package barestash --quiet -- "$@"

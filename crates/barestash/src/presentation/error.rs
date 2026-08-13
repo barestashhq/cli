@@ -2,7 +2,7 @@ use std::io::{self, Write};
 
 use crate::error::CliError;
 use crate::presentation::sanitize_terminal_text;
-use crate::protocol::{RestErrorCode, RestErrorResponse};
+use barestash_protocol::{RestErrorCode, RestErrorResponse};
 
 pub fn print_cli_error(error: &CliError) {
     if matches!(error, CliError::AlreadyReported) {

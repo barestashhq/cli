@@ -24,7 +24,7 @@ Release assets use these target names:
 You can also install the current source with a Rust 1.88+ toolchain:
 
 ```bash
-cargo install --git https://github.com/barestashhq/cli --locked
+cargo install --locked --git https://github.com/barestashhq/cli barestash
 ```
 
 A Homebrew tap is planned; until it is published, use the macOS GitHub Release
@@ -236,7 +236,15 @@ link-local addresses and pinned for the process to prevent DNS rebinding.
 
 ## Development
 
-The repository builds and tests with Cargo. `just` is the documented shortcut:
+The repository is a Cargo workspace with three packages:
+
+- `barestash`: the executable CLI and its terminal/local-state behavior
+- `barestash-client`: reusable HTTP and SSE transport for the Barestash API
+- `barestash-protocol`: wire contracts and protocol-level validation
+
+The CLI depends on the client and protocol packages, while the client depends
+only on the protocol package. All packages live under `crates/`; the repository
+root is a virtual workspace. `just` is the documented command surface:
 
 ```bash
 just install
@@ -247,8 +255,9 @@ just package
 just ci
 ```
 
-`just package` verifies the native release build and Cargo source-package
-allowlist; the crate is intentionally not published to crates.io.
+`just check` covers every workspace package. `just package` explicitly verifies
+the `barestash` release build and Cargo source-package allowlist; none of the
+workspace packages are published to crates.io.
 
 The Nix/direnv shell provides Rust, Cargo, rustfmt, Clippy, and repository tools.
 See [docs/cli-design.md](docs/cli-design.md) for the observable contract and

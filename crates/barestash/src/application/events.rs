@@ -2,11 +2,8 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use futures_util::StreamExt as _;
 use reqwest::Method;
-use reqwest::header::{
-    ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap as HttpHeaderMap, HeaderValue,
-};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap as HttpHeaderMap, HeaderValue};
 use serde::Serialize;
 
 use crate::application::auth::{
@@ -21,13 +18,12 @@ use crate::domain::{
     TransformedBody, TransformedEventStreamPayload, parse_poll_interval,
     redact_headers_for_display, transform_body, transform_stream_payload,
 };
-use crate::infrastructure::api::{ApiClient, ApiClientError};
-use crate::infrastructure::sse::{SseDecoder, SseEvent};
 use crate::presentation::renderer::{TableColumn, Tone};
 use crate::presentation::{
     OutputRenderer, TailView, TerminalCapabilities, print_json, print_json_line, print_lines,
 };
-use crate::protocol::{
+use barestash_client::{ApiClient, ApiClientError, SseEvent, SseEventStream};
+use barestash_protocol::{
     EventDetail, EventListResponse, EventMetadata, EventStreamPayload, RestErrorCode,
 };
 
@@ -307,7 +303,7 @@ where
     let mut last_event_id: Option<String> = None;
 
     loop {
-        let mut headers = match auth_headers(context).await {
+        let headers = match auth_headers(context).await {
             Ok(headers) => headers,
             Err(error @ CliError::Connectivity(_)) => {
                 if reconnect_limit_reached(reconnects, options.max_reconnects) {
@@ -319,14 +315,14 @@ where
             }
             Err(error) => return Err(error),
         };
-        headers.insert(ACCEPT, HeaderValue::from_static("text/event-stream"));
-        if let Some(id) = &last_event_id {
-            let value = HeaderValue::from_str(id)
-                .map_err(|_| CliError::Local("SSE event ID is not a valid HTTP header.".into()))?;
-            headers.insert("last-event-id", value);
-        }
-
-        let response = match send_stream_request(context, endpoint_id, headers).await {
+        let response = match send_stream_request(
+            context,
+            endpoint_id,
+            headers,
+            last_event_id.as_deref(),
+        )
+        .await
+        {
             Ok(response) => response,
             Err(StreamRequestError::Transport(error)) => {
                 if reconnect_limit_reached(reconnects, options.max_reconnects) {
@@ -343,26 +339,17 @@ where
             return Err(stream_response_error(response).await);
         }
 
-        let mut decoder = SseDecoder::new(last_event_id.clone());
-        let mut bytes = response.bytes_stream();
-        let mut read_error = None;
-
-        while let Some(chunk) = bytes.next().await {
-            match chunk {
-                Ok(chunk) => {
-                    for event in decoder.push(&chunk) {
-                        emit_sse_event(event, &mut on_payload)?;
-                    }
-                }
-                Err(error) => {
-                    read_error = Some(error);
-                    break;
-                }
+        let mut stream = SseEventStream::new(response, last_event_id.clone());
+        let read_result = loop {
+            match stream.next_event().await {
+                Ok(Some(event)) => emit_sse_event(event, &mut on_payload)?,
+                Ok(None) => break Ok(()),
+                Err(error) => break Err(error),
             }
-        }
+        };
+        last_event_id = stream.last_event_id().map(str::to_owned);
 
-        if let Some(error) = read_error {
-            last_event_id = decoder.last_event_id().map(str::to_owned);
+        if let Err(error) = read_result {
             if reconnect_limit_reached(reconnects, options.max_reconnects) {
                 return Err(CliError::Local(format!(
                     "Failed to read Barestash event stream.\n{error}"
@@ -371,26 +358,6 @@ where
             reconnects += 1;
             tokio::time::sleep(options.reconnect_delay).await;
             continue;
-        }
-
-        match decoder.finish() {
-            Ok((events, completed_last_event_id)) => {
-                for event in events {
-                    emit_sse_event(event, &mut on_payload)?;
-                }
-                last_event_id = completed_last_event_id;
-            }
-            Err(error) => {
-                last_event_id = error.last_event_id().map(str::to_owned);
-                if reconnect_limit_reached(reconnects, options.max_reconnects) {
-                    return Err(CliError::Local(format!(
-                        "Failed to read Barestash event stream.\n{error}"
-                    )));
-                }
-                reconnects += 1;
-                tokio::time::sleep(options.reconnect_delay).await;
-                continue;
-            }
         }
 
         if reconnect_limit_reached(reconnects, options.max_reconnects) {
@@ -410,14 +377,13 @@ async fn send_stream_request(
     context: &AppContext,
     endpoint_id: &str,
     headers: HttpHeaderMap,
+    last_event_id: Option<&str>,
 ) -> Result<reqwest::Response, StreamRequestError> {
     let path = format!("/v1/endpoints/{endpoint_id}/events/stream");
     let expired_token = bearer_token_from_headers(&headers).map(str::to_owned);
     let response = context
-        .api
-        .send(Method::GET, &path, |builder| {
-            builder.headers(headers.clone())
-        })
+        .api()
+        .send_event_stream(&path, headers.clone(), last_event_id)
         .await
         .map_err(classify_stream_request_error)?;
 
@@ -456,8 +422,8 @@ async fn send_stream_request(
         .map_err(|error| StreamRequestError::Fatal(CliError::Infrastructure(error.to_string())))?;
     retry_headers.insert(AUTHORIZATION, authorization);
     context
-        .api
-        .send(Method::GET, &path, |builder| builder.headers(retry_headers))
+        .api()
+        .send_event_stream(&path, retry_headers, last_event_id)
         .await
         .map_err(classify_stream_request_error)
 }
@@ -932,7 +898,7 @@ fn body_lines(body: &TransformedBody) -> Result<Vec<String>, CliError> {
     }
 }
 
-fn event_content_type(headers: &crate::protocol::HeaderMap) -> &str {
+fn event_content_type(headers: &barestash_protocol::HeaderMap) -> &str {
     headers.get("content-type").map_or("-", String::as_str)
 }
 
@@ -952,14 +918,13 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
-    use crate::infrastructure::api::ApiUrlPolicy;
     use crate::infrastructure::config::FileConfigStore;
     use crate::infrastructure::credentials::CredentialStore;
     use crate::infrastructure::lock::FileLock;
-    use crate::protocol::{EventBodyMetadata, HeaderMap, QueryParameters};
-    use reqwest::StatusCode;
+    use barestash_client::ApiUrlPolicy;
+    use barestash_protocol::{EventBodyMetadata, HeaderMap, QueryParameters};
     use tempfile::TempDir;
-    use wiremock::matchers::{header, method, path, query_param};
+    use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn api(server: &MockServer) -> ApiClient {
@@ -979,6 +944,7 @@ mod tests {
         let context = AppContext {
             env: HashMap::from([("BARESTASH_TOKEN".to_owned(), "test-token".to_owned())]),
             api: api(server),
+            api_host_logged: std::sync::atomic::AtomicBool::new(true),
             config: FileConfigStore::new(&config_path),
             credentials: Arc::new(CredentialStore::system(
                 directory.path().join("credentials.json"),
@@ -1047,7 +1013,7 @@ mod tests {
             id: "evt_test".to_owned(),
             endpoint_id: "ep_test".to_owned(),
             received_at: "2026-07-05T12:04:32.000Z".to_owned(),
-            request: crate::protocol::EventDetailRequest {
+            request: barestash_protocol::EventDetailRequest {
                 method: "POST".to_owned(),
                 ingest_path: "/ep_test".to_owned(),
                 request_path: "/".to_owned(),
@@ -1141,41 +1107,13 @@ mod tests {
         .await;
         assert!(matches!(
             result,
-            Err(CliError::Api(crate::protocol::RestErrorResponse {
-                error: crate::protocol::RestErrorDetail {
+            Err(CliError::Api(barestash_protocol::RestErrorResponse {
+                error: barestash_protocol::RestErrorDetail {
                     code: RestErrorCode::EndpointNotFound,
                     ..
                 }
             }))
         ));
-    }
-
-    #[tokio::test]
-    async fn authenticated_stream_request_uses_last_event_id_header() {
-        // Header matching is covered at the transport boundary without needing
-        // to construct a keyring-backed AppContext.
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/v1/endpoints/ep_test/events/stream"))
-            .and(header("last-event-id", "evt_previous"))
-            .respond_with(
-                ResponseTemplate::new(StatusCode::OK.as_u16())
-                    .set_body_raw("id: evt_next\ndata: {}\n\n", "text/event-stream"),
-            )
-            .mount(&server)
-            .await;
-
-        let mut headers = HttpHeaderMap::new();
-        headers.insert("last-event-id", HeaderValue::from_static("evt_previous"));
-        let response = api(&server)
-            .send(
-                Method::GET,
-                "/v1/endpoints/ep_test/events/stream",
-                |builder| builder.headers(headers),
-            )
-            .await
-            .unwrap_or_else(|error| panic!("stream connects: {error}"));
-        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[tokio::test]
@@ -1470,6 +1408,7 @@ mod tests {
             env: HashMap::from([("BARESTASH_TOKEN".to_owned(), "test-token".to_owned())]),
             api: ApiClient::new_deferred("not a URL", ApiUrlPolicy::default())
                 .unwrap_or_else(|error| panic!("deferred API client builds: {error}")),
+            api_host_logged: std::sync::atomic::AtomicBool::new(true),
             config: FileConfigStore::new(&config_path),
             credentials: Arc::new(CredentialStore::system(
                 directory.path().join("credentials.json"),

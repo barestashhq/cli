@@ -265,11 +265,12 @@ name = "barestash"
 version = "0.0.1"
 dependencies = [
  "assert_cmd",
+ "barestash-client",
+ "barestash-protocol",
  "base64",
  "chrono",
  "clap",
  "fs4",
- "futures-util",
  "home",
  "hostname",
  "keyring",
@@ -290,6 +291,28 @@ dependencies = [
  "uuid",
  "windows-native-keyring-store",
  "wiremock",
+]
+
+[[package]]
+name = "barestash-client"
+version = "0.0.1"
+dependencies = [
+ "barestash-protocol",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "url",
+ "wiremock",
+]
+
+[[package]]
+name = "barestash-protocol"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
