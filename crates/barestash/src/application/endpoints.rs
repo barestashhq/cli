@@ -14,7 +14,7 @@ use crate::presentation::renderer::{TableColumn, Tone};
 use crate::presentation::{
     OutputRenderer, TerminalCapabilities, print_json, print_lines, sanitize_terminal_text,
 };
-use crate::protocol::{
+use barestash_protocol::{
     EndpointCreateRequest, EndpointDeleteResponse, EndpointListResponse, EndpointMetadata,
     EndpointMode, EndpointResponse, EndpointSecretCreateResponse, EndpointSecretListResponse,
     EndpointSecretMetadata, EndpointSecretRevokeResponse, EndpointSecretStatus,
@@ -56,7 +56,7 @@ async fn create(context: &AppContext, args: EndpointCreateArgs) -> Result<(), Cl
     // remaining owner operations.
     let response: EndpointResponse = if mode == EndpointMode::Temporary {
         context
-            .api
+            .api()
             .request_json(Method::POST, "/v1/endpoints", None, Some(body))
             .await
             .map_err(CliError::from_api_client)?
@@ -578,7 +578,7 @@ fn json_body(value: &impl Serialize) -> Result<serde_json::Value, CliError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::EndpointStatus;
+    use barestash_protocol::EndpointStatus;
 
     fn plain() -> TerminalCapabilities {
         TerminalCapabilities {

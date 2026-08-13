@@ -11,14 +11,17 @@ The command and output contract is documented in
 
 ## Repository boundaries
 
-- Keep the Cargo package and `barestash` binary at the repository root.
-- Keep `src/main.rs` small; parsing, application behavior, infrastructure, and
-  presentation remain separate modules.
+- Keep the repository root as a virtual Cargo workspace. All packages belong
+  under `crates/`; the `barestash` binary belongs to `crates/barestash`.
+- Keep `crates/barestash/src/main.rs` small; parsing, application behavior,
+  infrastructure, and presentation remain separate modules.
 - Use the Rust 2018-style module layout: define parent modules as
   `src/<module>.rs` and child modules under `src/<module>/`; do not add
   `mod.rs` files.
-- Protocol types in `src/protocol.rs` describe only public API contracts and
-  portable helpers needed by this CLI.
+- Keep wire contracts and portable protocol helpers in `barestash-protocol`,
+  reusable HTTP/SSE transport in `barestash-client`, and CLI-only behavior in
+  `barestash`. Dependencies flow from `barestash` to `barestash-client` to
+  `barestash-protocol`; `barestash` may also depend directly on the protocol.
 - Do not add server implementation, deployment configuration, private
   operational documentation, or backend-only contracts.
 
@@ -38,8 +41,8 @@ The command and output contract is documented in
 - Never print or commit raw tokens, refresh credentials, endpoint secrets,
   cookies, `Authorization`, or `x-barestash-secret` except where a one-time
   creation result explicitly owns the secret on stdout.
-- Keep sensitive-header redaction aligned with `src/domain.rs` and cover
-  additions with tests.
+- Keep sensitive-header redaction aligned with
+  `crates/barestash/src/domain.rs` and cover additions with tests.
 - Treat body content as potentially sensitive even though the CLI does not
   redact it by default.
 - Preserve API URL and same-origin redirect validation for authenticated

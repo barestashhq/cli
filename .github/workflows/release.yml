@@ -52,14 +52,14 @@ jobs:
         if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
         shell: bash
         run: |
-          version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)"
+          version="$(sed -n '/^\[workspace\.package\]$/,/^\[/s/^version = "\([^"]*\)"/\1/p' Cargo.toml)"
           if [[ "${GITHUB_REF_TYPE:-branch}" == "tag" && "${GITHUB_REF_NAME}" != "v${version}" ]]; then
             echo "Tag ${GITHUB_REF_NAME} does not match Cargo version v${version}." >&2
             exit 1
           fi
           cargo fmt --all --check
-          cargo clippy --all-targets --all-features -- -D warnings
-          cargo test --all --locked
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+          cargo test --workspace --all-features --locked
 
       - name: Install cross
         if: matrix.cross
@@ -69,11 +69,11 @@ jobs:
 
       - name: Build with Cargo
         if: ${{ !matrix.cross }}
-        run: cargo build --locked --release --target ${{ matrix.target }}
+        run: cargo build --package barestash --locked --release --target ${{ matrix.target }}
 
       - name: Build with cross
         if: matrix.cross
-        run: cross build --locked --release --target ${{ matrix.target }}
+        run: cross build --package barestash --locked --release --target ${{ matrix.target }}
 
       - name: Package Unix archive
         if: runner.os != 'Windows'

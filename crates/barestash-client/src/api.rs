@@ -1,18 +1,18 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
-use reqwest::header::{CONTENT_LENGTH, HeaderMap, LOCATION, TRANSFER_ENCODING};
+use reqwest::header::{
+    ACCEPT, CONTENT_LENGTH, HeaderMap, HeaderValue, LOCATION, TRANSFER_ENCODING,
+};
 use reqwest::redirect::Policy;
 use reqwest::{Method, Request, RequestBuilder, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use thiserror::Error;
 use url::{Host, Url};
 
-use crate::protocol::{RestErrorCode, RestErrorDetail, RestErrorResponse};
+use barestash_protocol::{RestErrorCode, RestErrorDetail, RestErrorResponse};
 
-pub const DEFAULT_API_URL: &str = "http://localhost:8787";
-pub const DEFAULT_MAX_REDIRECTS: usize = 5;
+const DEFAULT_MAX_REDIRECTS: usize = 5;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ApiUrlPolicy {
@@ -67,17 +67,19 @@ pub enum ApiClientError {
     CrossOriginRedirect,
     #[error("Barestash API request body cannot be replayed across a redirect.")]
     UnreplayableRedirectBody,
+    #[error("SSE event ID is not a valid HTTP header.")]
+    InvalidLastEventId(#[source] reqwest::header::InvalidHeaderValue),
 }
 
 /// Validates the configured API URL without making a network request.
-pub fn validate_api_base_url(raw_url: &str, policy: ApiUrlPolicy) -> Result<Url, ApiUrlError> {
+fn validate_api_base_url(raw_url: &str, policy: ApiUrlPolicy) -> Result<Url, ApiUrlError> {
     let url = Url::parse(raw_url).map_err(ApiUrlError::InvalidUrl)?;
     validate_url(&url, policy, false)?;
     Ok(url)
 }
 
 /// Applies the API URL policy to every redirect destination.
-pub fn validate_redirect_target(url: &Url, policy: ApiUrlPolicy) -> Result<(), ApiUrlError> {
+fn validate_redirect_target(url: &Url, policy: ApiUrlPolicy) -> Result<(), ApiUrlError> {
     validate_url(url, policy, true)
 }
 
@@ -141,8 +143,6 @@ pub struct ApiClient {
     raw_base_url: String,
     policy: ApiUrlPolicy,
     max_redirects: usize,
-    log_host: bool,
-    host_logged: Arc<AtomicBool>,
     resolved_client: Arc<tokio::sync::OnceCell<reqwest::Client>>,
 }
 
@@ -165,30 +165,20 @@ impl ApiClient {
             raw_base_url: raw_base_url.to_owned(),
             policy,
             max_redirects: DEFAULT_MAX_REDIRECTS,
-            log_host: false,
-            host_logged: Arc::new(AtomicBool::new(false)),
             resolved_client: Arc::new(tokio::sync::OnceCell::new()),
         })
     }
 
-    pub fn with_max_redirects(mut self, max_redirects: usize) -> Self {
-        self.max_redirects = max_redirects;
-        self
-    }
-
-    /// Enables the one-time production diagnostic without affecting injected
-    /// clients used by unit tests.
-    #[must_use]
-    pub fn with_host_diagnostic(mut self, enabled: bool) -> Self {
-        self.log_host = enabled;
-        self
-    }
-
-    pub fn base_url(&self) -> Result<Url, ApiClientError> {
+    fn base_url(&self) -> Result<Url, ApiClientError> {
         validate_api_base_url(&self.raw_base_url, self.policy).map_err(ApiClientError::from)
     }
 
-    pub fn url(&self, path: &str) -> Result<Url, ApiClientError> {
+    /// Returns the validated API hostname for user-facing diagnostics.
+    pub fn api_host(&self) -> Result<String, ApiClientError> {
+        Ok(self.base_url()?.host_str().unwrap_or_default().to_owned())
+    }
+
+    fn url(&self, path: &str) -> Result<Url, ApiClientError> {
         self.base_url()?
             .join(path)
             .map_err(ApiClientError::ResolvePath)
@@ -205,13 +195,26 @@ impl ApiClient {
         F: FnOnce(RequestBuilder) -> RequestBuilder,
     {
         let url = self.url(path)?;
-        if self.log_host && !self.host_logged.swap(true, Ordering::AcqRel) {
-            eprintln!("Barestash API host: {}", format_api_host(&url));
-        }
         let request = configure(self.client.request(method, url))
             .build()
             .map_err(ApiClientError::BuildRequest)?;
         self.execute(request).await
+    }
+
+    /// Opens an SSE response while applying the standard event-stream headers.
+    pub async fn send_event_stream(
+        &self,
+        path: &str,
+        mut headers: HeaderMap,
+        last_event_id: Option<&str>,
+    ) -> Result<Response, ApiClientError> {
+        headers.insert(ACCEPT, HeaderValue::from_static("text/event-stream"));
+        if let Some(id) = last_event_id {
+            let value = HeaderValue::from_str(id).map_err(ApiClientError::InvalidLastEventId)?;
+            headers.insert("last-event-id", value);
+        }
+        self.send(Method::GET, path, |request| request.headers(headers))
+            .await
     }
 
     /// Sends a JSON API request and distinguishes typed REST errors from
@@ -264,7 +267,7 @@ impl ApiClient {
     }
 
     /// Executes an already-built request with the same redirect protections.
-    pub async fn execute(&self, mut request: Request) -> Result<Response, ApiClientError> {
+    async fn execute(&self, mut request: Request) -> Result<Response, ApiClientError> {
         let mut redirect_count = 0usize;
 
         loop {
@@ -439,10 +442,6 @@ fn invalid_json_response() -> RestErrorResponse {
             message: "Barestash API returned a response that was not valid JSON.".into(),
         },
     }
-}
-
-pub fn format_api_host(url: &Url) -> &str {
-    url.host_str().unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -675,6 +674,43 @@ mod tests {
                 .expect("destination requests")
                 .is_empty()
         );
+    }
+
+    #[tokio::test]
+    async fn event_stream_request_sets_accept_and_cursor_headers() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/events/stream"))
+            .and(header("accept", "text/event-stream"))
+            .and(header("last-event-id", "evt_previous"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let client = ApiClient::new(&server.uri(), ApiUrlPolicy::default()).expect("API client");
+
+        let response = client
+            .send_event_stream("/events/stream", HeaderMap::new(), Some("evt_previous"))
+            .await
+            .expect("event stream response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn event_stream_request_rejects_an_invalid_cursor() {
+        let client =
+            ApiClient::new("http://localhost:8787", ApiUrlPolicy::default()).expect("API client");
+
+        let error = client
+            .send_event_stream(
+                "/events/stream",
+                HeaderMap::new(),
+                Some("invalid\nidentifier"),
+            )
+            .await
+            .expect_err("invalid cursor must fail before the request");
+
+        assert!(matches!(error, ApiClientError::InvalidLastEventId(_)));
     }
 
     #[tokio::test]

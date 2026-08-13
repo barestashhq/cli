@@ -5,14 +5,16 @@ Node.js and npm are not part of the build, runtime, or publication path.
 
 ## Verification
 
-Before tagging a release, update the version in `Cargo.toml` and run:
+Before tagging a release, update `version` under `[workspace.package]` in the
+root `Cargo.toml` and run:
 
 ```bash
 just ci
 ```
 
-This checks formatting, runs Clippy with warnings denied, runs all tests,
-verifies the Cargo package allowlist, and builds the release binary. The
+This checks formatting, runs Clippy with warnings denied, and runs tests across
+all workspace packages. It also verifies the `barestash` Cargo package
+allowlist, builds the release binary, and smoke-tests its version output. The
 GitHub Actions check workflow repeats the quality gates on Ubuntu, macOS, and
 Windows.
 
@@ -36,9 +38,11 @@ Homebrew tap without renaming.
 
 Linux archives are built with `cross` for both architectures to avoid silently
 raising the minimum glibc version when GitHub updates its hosted Ubuntu image.
-The Cargo package itself is not published to crates.io; its explicit file
-allowlist exists to verify source packaging and excludes Node.js caches,
-coverage output, and build artifacts.
+None of the workspace packages are published to crates.io. The executable
+`barestash` package keeps an explicit file allowlist to verify source packaging
+and exclude Node.js caches, coverage output, and build artifacts. `just package`
+also verifies that its packaged license and third-party notice remain identical
+to the repository-root copies used by release archives.
 
 ## npm migration decision
 

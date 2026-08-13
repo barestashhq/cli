@@ -1,0 +1,25 @@
+[package]
+name = "barestash-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Reusable HTTP and SSE client for Barestash"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish.workspace = true
+
+[dependencies]
+barestash-protocol.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+wiremock.workspace = true
+
+[lints]
+workspace = true

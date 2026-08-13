@@ -17,7 +17,7 @@ use crate::presentation::renderer::TableColumn;
 use crate::presentation::{
     OutputRenderer, TerminalCapabilities, print_json, print_lines, sanitize_terminal_text,
 };
-use crate::protocol::{
+use barestash_protocol::{
     AUTHORIZATION_SCOPES, AccountCredential, AccountResponse, AuthorizationScope, BearerTokenType,
     PersonalAccessTokenCreateRequest, PersonalAccessTokenCreateResponse,
     PersonalAccessTokenListResponse, PersonalAccessTokenMetadata,
@@ -492,8 +492,8 @@ mod tests {
 
     #[test]
     fn personal_access_token_detection_rejects_session_tokens() {
-        let suffix = "A".repeat(crate::protocol::TOKEN_ID_SUFFIX_LENGTH);
-        let secret = "B".repeat(crate::protocol::BEARER_TOKEN_SECRET_LENGTH);
+        let suffix = "A".repeat(barestash_protocol::TOKEN_ID_SUFFIX_LENGTH);
+        let secret = "B".repeat(barestash_protocol::BEARER_TOKEN_SECRET_LENGTH);
         assert_eq!(
             personal_access_token_id(&format!("bst_pat_{suffix}_{secret}")),
             Some(format!("tok_{suffix}"))

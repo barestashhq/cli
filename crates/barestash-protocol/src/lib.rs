@@ -684,57 +684,6 @@ impl fmt::Display for RestErrorResponse {
 
 impl std::error::Error for RestErrorResponse {}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParsedSseMessage {
-    pub id: Option<String>,
-    pub data: Option<String>,
-}
-
-pub fn parse_sse_message(message: &str) -> ParsedSseMessage {
-    let mut id = None;
-    let mut data_lines = Vec::new();
-
-    for raw_line in message.split('\n') {
-        let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
-
-        if let Some(value) = line.strip_prefix("id:") {
-            id = Some(value.trim_start().to_owned());
-        }
-        if let Some(value) = line.strip_prefix("data:") {
-            data_lines.push(value.trim_start());
-        }
-    }
-
-    ParsedSseMessage {
-        id,
-        data: (!data_lines.is_empty()).then(|| data_lines.join("\n")),
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SseMessageSeparator {
-    pub index: usize,
-    pub length: usize,
-}
-
-pub fn find_sse_message_separator(buffer: &str) -> Option<SseMessageSeparator> {
-    const SEPARATORS: [&[u8]; 4] = [b"\r\n\r\n", b"\r\n\n", b"\n\r\n", b"\n\n"];
-    let bytes = buffer.as_bytes();
-
-    for index in 0..bytes.len() {
-        for separator in SEPARATORS {
-            if bytes[index..].starts_with(separator) {
-                return Some(SseMessageSeparator {
-                    index,
-                    length: separator.len(),
-                });
-            }
-        }
-    }
-
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -853,38 +802,5 @@ mod tests {
 
         assert_eq!(error.error.code, RestErrorCode::Unknown);
         assert_eq!(error.error.message, "Future backend error.");
-    }
-
-    #[test]
-    fn parses_lf_crlf_and_multiline_sse_messages() {
-        assert_eq!(
-            parse_sse_message("id: evt_1\ndata: {\"a\":1}\ndata: tail"),
-            ParsedSseMessage {
-                id: Some("evt_1".to_owned()),
-                data: Some("{\"a\":1}\ntail".to_owned()),
-            }
-        );
-        assert_eq!(
-            parse_sse_message("id: evt_2\r\ndata: {}\r\n"),
-            ParsedSseMessage {
-                id: Some("evt_2".to_owned()),
-                data: Some("{}".to_owned()),
-            }
-        );
-        assert_eq!(
-            find_sse_message_separator("id: 1\ndata: {}\n\nrest"),
-            Some(SseMessageSeparator {
-                index: 14,
-                length: 2
-            })
-        );
-        assert_eq!(
-            find_sse_message_separator("id: 1\r\ndata: {}\r\n\r\nrest"),
-            Some(SseMessageSeparator {
-                index: 15,
-                length: 4
-            })
-        );
-        assert_eq!(find_sse_message_separator("id: 1\ndata: {}\n"), None);
     }
 }

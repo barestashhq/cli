@@ -38,13 +38,13 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Run Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
       - name: Run tests
-        run: cargo test --all --locked
+        run: cargo test --workspace --all-features --locked
 
       - name: Build release binary
-        run: cargo build --release --locked
+        run: cargo build --package barestash --release --locked
 
       - name: Smoke-test binary (Unix)
         if: runner.os != 'Windows'

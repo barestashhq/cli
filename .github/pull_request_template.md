@@ -15,7 +15,8 @@ Check everything affected by this PR:
 - [ ] Commands, arguments, flags, help text, errors, or exit codes
 - [ ] Human-readable output, JSON/JSONL, or stdout/stderr behavior
 - [ ] Endpoint or token resolution, local config, or credential storage
-- [ ] API contracts or portable helpers in `src/protocol.rs`
+- [ ] Protocol contracts or HTTP/SSE client behavior in
+      `crates/barestash-protocol` or `crates/barestash-client`
 - [ ] `README.md` or `docs/cli-design.md`
 - [ ] Build, package, dependency, or release behavior
 - [ ] No user-visible behavior or public contract changes
