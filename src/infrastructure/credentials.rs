@@ -203,7 +203,7 @@ fn legacy_keytar_windows_entry(
 ) -> Result<keyring_core::Entry, KeyringBackendError> {
     use std::collections::HashMap;
 
-    use keyring_core::CredentialStoreApi;
+    use keyring_core::api::CredentialStoreApi;
 
     // keytar used `service/account` as the Windows Credential Manager target,
     // while keyring's native backend defaults to `account.service`.
