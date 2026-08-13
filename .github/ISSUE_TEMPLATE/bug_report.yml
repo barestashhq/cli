@@ -1,0 +1,117 @@
+name: Bug report
+description: Report incorrect or unexpected behavior in the Barestash CLI.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a CLI bug.
+
+        Do not include live tokens, refresh credentials, endpoint secrets, cookies, private endpoint URLs, real webhook payloads, or sensitive request headers. Use synthetic examples and redact command output before posting.
+
+        For security vulnerabilities, do not use this form. Read the
+        [security policy](https://github.com/barestashhq/cli/blob/main/SECURITY.md)
+        and report the issue privately.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is the CLI doing incorrectly?
+      placeholder: Describe the bug in one or two sentences.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the CLI is affected?
+      options:
+        - Native binary installation or release artifact
+        - Command parsing, help, errors, or exit codes
+        - Authentication or credential storage
+        - Endpoint commands
+        - Event listing, display, tailing, or streaming
+        - Token commands
+        - Configuration or API URL resolution
+        - Human-readable, JSON, or JSONL output
+        - Development, build, test, or packaging workflow
+        - Unknown or multiple areas
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      description: Which command triggers the problem, if applicable?
+      placeholder: barestash events stream --endpoint ep_example
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest reliable reproduction using synthetic data.
+      placeholder: |
+        1. Run ...
+        2. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Provide the relevant CLI and platform details.
+      placeholder: |
+        - Barestash CLI version (`barestash --version`):
+        - Installation source and archive target:
+        - OS and architecture:
+        - Shell:
+        - Installation method:
+    validations:
+      required: true
+  - type: textarea
+    id: endpoint_context
+    attributes:
+      label: Endpoint and authentication context
+      description: Describe the mode without including identifiers, URLs, or secrets.
+      placeholder: |
+        - Endpoint mode: private or temporary
+        - Authentication source: environment, stored credentials, or none
+        - API host: default or custom (do not paste the URL)
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs or output
+      description: Paste only synthetic or safely redacted output and error messages.
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Reporter checklist
+      options:
+        - label: I searched existing issues for the same problem.
+          required: true
+        - label: This report concerns behavior observed in the Barestash CLI.
+          required: true
+        - label: I removed all credentials, secrets, private URLs, real payloads, and user data.
+          required: true

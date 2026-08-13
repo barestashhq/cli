@@ -1,0 +1,88 @@
+name: Feature request
+description: Propose a new capability or behavior for the Barestash CLI.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for changes to the public native Barestash CLI. This repository does not contain the Barestash server implementation or infrastructure.
+
+        Do not include live tokens, refresh credentials, endpoint secrets, cookies, private endpoint URLs, real webhook payloads, or user data.
+
+        For security vulnerabilities, do not use this form. Read the
+        [security policy](https://github.com/barestashhq/cli/blob/main/SECURITY.md)
+        and report the issue privately.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What CLI workflow or user problem should this solve?
+      placeholder: Describe the terminal, script, or AI-agent workflow.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed CLI behavior
+      description: What should the CLI do?
+      placeholder: Describe the proposed command, flag, output, configuration, or documentation behavior.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Primary area
+      options:
+        - Commands, arguments, flags, help, or errors
+        - Human-readable output
+        - JSON, JSONL, or streaming integration
+        - Authentication or credential storage
+        - Endpoint selection or local configuration
+        - Installation, packaging, or platform compatibility
+        - Documentation
+        - Development, test, or release workflow
+        - Other or unsure
+    validations:
+      required: true
+  - type: checkboxes
+    id: interfaces
+    attributes:
+      label: Affected interfaces
+      description: Select all public contracts that may need design or documentation updates.
+      options:
+        - label: Command, argument, flag, or help text
+        - label: Human-readable output or error message
+        - label: JSON, JSONL, stdout/stderr, or exit-code contract
+        - label: Local config, environment variable, or credential storage
+        - label: API contract consumed by the CLI
+        - label: README, CLI design, or release documentation
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Mention current workarounds or other designs, if any.
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How should maintainers verify that this request is complete?
+      placeholder: |
+        - ...
+        - ...
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Reporter checklist
+      options:
+        - label: I searched existing issues for a similar request.
+          required: true
+        - label: This request concerns the Barestash CLI rather than the Barestash server implementation.
+          required: true
+        - label: I did not include credentials, secrets, private URLs, real payloads, or user data.
+          required: true

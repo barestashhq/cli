@@ -1,0 +1,69 @@
+name: Documentation issue
+description: Report incorrect, missing, or unclear Barestash CLI documentation.
+title: "[Docs]: "
+labels:
+  - documentation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for the CLI README, command help, public design documentation, security policy, and release documentation.
+
+        For security vulnerabilities, do not use this form. Read the
+        [security policy](https://github.com/barestashhq/cli/blob/main/SECURITY.md)
+        and report the issue privately.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What documentation issue should be fixed?
+      placeholder: Describe what is incorrect, missing, or unclear.
+    validations:
+      required: true
+  - type: textarea
+    id: affected_docs
+    attributes:
+      label: Affected documentation
+      description: Link to or name the affected file, section, command help, or error message.
+      placeholder: |
+        - README.md section "..."
+        - `barestash events stream --help`
+        - docs/cli-design.md
+    validations:
+      required: true
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: Issue type
+      options:
+        - Incorrect or stale information
+        - Missing documentation
+        - Broken link
+        - Unclear wording or example
+        - Contradiction between documentation and CLI behavior
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected documentation
+      description: What should the documentation say or help the reader accomplish?
+      placeholder: Describe the expected guidance or provide a suggested correction.
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: How does this issue affect CLI users or contributors?
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Reporter checklist
+      options:
+        - label: I searched existing issues for the same documentation problem.
+          required: true
+        - label: I did not include credentials, secrets, private URLs, real payloads, or user data.
+          required: true

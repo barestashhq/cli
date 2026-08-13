@@ -1,0 +1,52 @@
+### macOS ###
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+### Local configuration and secrets ###
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+### Development environment ###
+.direnv/
+/result
+/result-*
+.debug/
+
+### Logs, reports, and packages ###
+*.log
+*.tgz
+coverage/
+lcov.info
+cobertura.xml
+
+### Rust build and release artifacts ###
+target/
+artifacts/
+
+### Legacy/local tool caches ###
+node_modules/
+.pnpm-store/
+dist/
+*.tsbuildinfo
+
+### Temporary files ###
+temp/
+tmp/
+.temp/
+.tmp/
