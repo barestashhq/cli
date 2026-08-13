@@ -1,8 +1,9 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use syn::visit::Visit;
-use syn::{ItemMod, ItemUse, Path as RustPath, UseTree};
+use syn::{Item, ItemMod, ItemUse, Path as RustPath, UseTree};
 
 fn rust_sources_under(directory: &Path) -> Vec<PathBuf> {
     let mut sources = Vec::new();
@@ -65,15 +66,55 @@ fn source_depends_on(
     let mut visitor = DependencyVisitor {
         forbidden_segments: &forbidden_segments,
         current_module: current_module.to_vec(),
+        crate_root_aliases: crate_root_aliases(&syntax.items),
         found: false,
     };
     visitor.visit_file(&syntax);
     Ok(visitor.found)
 }
 
+fn crate_root_aliases(items: &[Item]) -> HashSet<String> {
+    let mut aliases = HashSet::new();
+    for item in items {
+        if let Item::Use(item_use) = item {
+            collect_crate_root_aliases(&item_use.tree, &mut Vec::new(), &mut aliases);
+        }
+    }
+    aliases
+}
+
+fn collect_crate_root_aliases(
+    tree: &UseTree,
+    prefix: &mut Vec<String>,
+    aliases: &mut HashSet<String>,
+) {
+    match tree {
+        UseTree::Path(path) => {
+            prefix.push(path.ident.to_string());
+            collect_crate_root_aliases(&path.tree, prefix, aliases);
+            prefix.pop();
+        }
+        UseTree::Rename(rename) => {
+            let target = rename.ident.to_string();
+            if (prefix.is_empty() && target == "crate")
+                || (prefix.as_slice() == ["crate"] && target == "self")
+            {
+                aliases.insert(rename.rename.to_string());
+            }
+        }
+        UseTree::Group(group) => {
+            for item in &group.items {
+                collect_crate_root_aliases(item, prefix, aliases);
+            }
+        }
+        UseTree::Name(_) | UseTree::Glob(_) => {}
+    }
+}
+
 struct DependencyVisitor<'a> {
     forbidden_segments: &'a [&'a str],
     current_module: Vec<String>,
+    crate_root_aliases: HashSet<String>,
     found: bool,
 }
 
@@ -121,6 +162,11 @@ impl DependencyVisitor<'_> {
                 normalized.extend(segments.into_iter().skip(super_count).map(str::to_owned));
                 Some(normalized)
             }
+            alias if self.crate_root_aliases.contains(alias) => Some(
+                std::iter::once("crate".to_owned())
+                    .chain(segments.into_iter().skip(1).map(str::to_owned))
+                    .collect(),
+            ),
             _ => Some(segments.into_iter().map(str::to_owned).collect()),
         }
     }
@@ -153,9 +199,12 @@ impl DependencyVisitor<'_> {
 
 impl<'ast> Visit<'ast> for DependencyVisitor<'_> {
     fn visit_item_mod(&mut self, node: &'ast ItemMod) {
-        if node.content.is_some() {
+        if let Some((_, items)) = &node.content {
             self.current_module.push(node.ident.to_string());
+            let parent_aliases =
+                std::mem::replace(&mut self.crate_root_aliases, crate_root_aliases(items));
             syn::visit::visit_item_mod(self, node);
+            self.crate_root_aliases = parent_aliases;
             self.current_module.pop();
         } else {
             syn::visit::visit_item_mod(self, node);
@@ -207,6 +256,23 @@ fn dependency_detection_covers_relative_imports() {
             source_depends_on(source, "crate::application", &current_module)
                 .expect("fixture should parse"),
             "relative dependency should be detected in {source}"
+        );
+    }
+}
+
+#[test]
+fn dependency_detection_covers_crate_root_aliases() {
+    let current_module = ["crate", "presentation", "output"].map(str::to_owned);
+    for source in [
+        "use crate as root; use root::application::CliError;",
+        "use crate::{self as root}; use root::application::CliError;",
+        "use root::{application::CliError}; use crate as root;",
+        "mod nested { use crate as root; use root::application::CliError; }",
+    ] {
+        assert!(
+            source_depends_on(source, "crate::application", &current_module)
+                .expect("fixture should parse"),
+            "aliased dependency should be detected in {source}"
         );
     }
 }
