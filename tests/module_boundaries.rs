@@ -63,14 +63,29 @@ fn source_depends_on(
 ) -> syn::Result<bool> {
     let forbidden_segments = forbidden_module.split("::").collect::<Vec<_>>();
     let syntax = syn::parse_file(source)?;
+    let crate_root_aliases = crate_root_aliases(&syntax.items);
     let mut visitor = DependencyVisitor {
         forbidden_segments: &forbidden_segments,
         current_module: current_module.to_vec(),
-        crate_root_aliases: crate_root_aliases(&syntax.items),
+        module_alias_bindings: module_alias_bindings(current_module, &crate_root_aliases),
+        crate_root_aliases,
         found: false,
     };
     visitor.visit_file(&syntax);
     Ok(visitor.found)
+}
+
+fn module_alias_bindings(current_module: &[String], aliases: &HashSet<String>) -> Vec<Vec<String>> {
+    aliases
+        .iter()
+        .map(|alias| {
+            current_module
+                .iter()
+                .cloned()
+                .chain(std::iter::once(alias.clone()))
+                .collect()
+        })
+        .collect()
 }
 
 fn crate_root_aliases(items: &[Item]) -> HashSet<String> {
@@ -125,6 +140,7 @@ struct DependencyVisitor<'a> {
     forbidden_segments: &'a [&'a str],
     current_module: Vec<String>,
     crate_root_aliases: HashSet<String>,
+    module_alias_bindings: Vec<Vec<String>>,
     found: bool,
 }
 
@@ -148,7 +164,7 @@ impl DependencyVisitor<'_> {
             return Some(Vec::new());
         };
 
-        match first {
+        let normalized = match first {
             "crate" => Some(segments.into_iter().map(str::to_owned).collect()),
             "self" => Some(
                 self.current_module
@@ -178,7 +194,19 @@ impl DependencyVisitor<'_> {
                     .collect(),
             ),
             _ => Some(segments.into_iter().map(str::to_owned).collect()),
+        }?;
+
+        for binding in &self.module_alias_bindings {
+            if normalized.starts_with(binding) {
+                return Some(
+                    std::iter::once("crate".to_owned())
+                        .chain(normalized.into_iter().skip(binding.len()))
+                        .collect(),
+                );
+            }
         }
+
+        Some(normalized)
     }
 
     fn visit_use_tree(&mut self, tree: &UseTree, mut prefix: Vec<String>) {
@@ -219,9 +247,14 @@ impl<'ast> Visit<'ast> for DependencyVisitor<'_> {
     fn visit_item_mod(&mut self, node: &'ast ItemMod) {
         if let Some((_, items)) = &node.content {
             self.current_module.push(node.ident.to_string());
+            let child_aliases = crate_root_aliases(items);
             let parent_aliases =
-                std::mem::replace(&mut self.crate_root_aliases, crate_root_aliases(items));
+                std::mem::replace(&mut self.crate_root_aliases, child_aliases.clone());
+            let parent_binding_count = self.module_alias_bindings.len();
+            self.module_alias_bindings
+                .extend(module_alias_bindings(&self.current_module, &child_aliases));
             syn::visit::visit_item_mod(self, node);
+            self.module_alias_bindings.truncate(parent_binding_count);
             self.crate_root_aliases = parent_aliases;
             self.current_module.pop();
         } else {
@@ -307,6 +340,21 @@ fn dependency_detection_covers_block_scoped_crate_aliases() {
             source_depends_on(source, "crate::application", &current_module)
                 .expect("fixture should parse"),
             "block-scoped aliased dependency should be detected in {source}"
+        );
+    }
+}
+
+#[test]
+fn dependency_detection_resolves_aliases_after_relative_paths() {
+    let current_module = ["crate", "presentation", "output"].map(str::to_owned);
+    for source in [
+        "use crate as root; fn example() { let _ = self::root::application::run; }",
+        "use crate as root; mod nested { fn example() { let _ = super::root::application::run; } }",
+    ] {
+        assert!(
+            source_depends_on(source, "crate::application", &current_module)
+                .expect("fixture should parse"),
+            "relative aliased dependency should be detected in {source}"
         );
     }
 }
