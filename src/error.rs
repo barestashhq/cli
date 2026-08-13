@@ -11,8 +11,6 @@ pub enum CliError {
     Connectivity(String),
     #[error("{0}")]
     Infrastructure(String),
-    #[error("operation cancelled")]
-    Cancelled,
     #[error("diagnostic already reported")]
     AlreadyReported,
 }

@@ -1,9 +1,7 @@
-use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use syn::visit::Visit;
-use syn::{Block, Item, ItemMod, ItemUse, Path as RustPath, Stmt, UseTree};
+use proc_macro2::{Delimiter, TokenStream, TokenTree};
 
 fn rust_sources_under(directory: &Path) -> Vec<PathBuf> {
     let mut sources = Vec::new();
@@ -23,393 +21,284 @@ fn rust_sources_under(directory: &Path) -> Vec<PathBuf> {
     sources
 }
 
-fn assert_sources_do_not_depend_on(paths: &[PathBuf], forbidden_module: &str) {
-    let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+fn assert_sources_do_not_reference_layer(paths: &[PathBuf], forbidden_layer: &str) {
     let violations = paths
         .iter()
         .filter(|path| {
             let source = fs::read_to_string(path).expect("Rust source should be readable");
-            let current_module = module_path(&source_root, path);
-            source_depends_on(&source, forbidden_module, &current_module).unwrap_or_else(|error| {
-                panic!("{} should contain valid Rust: {error}", path.display())
+            source_mentions_identifier(&source, forbidden_layer).unwrap_or_else(|error| {
+                panic!(
+                    "{} should contain valid Rust tokens: {error}",
+                    path.display()
+                )
             })
         })
         .collect::<Vec<_>>();
 
     assert!(
         violations.is_empty(),
-        "lower-level modules must not depend on {forbidden_module}: {violations:?}"
+        "lower-level sources must not reference the {forbidden_layer} layer: {violations:?}"
     );
 }
 
-fn module_path(source_root: &Path, source: &Path) -> Vec<String> {
-    let relative = source
-        .strip_prefix(source_root)
-        .expect("Rust source should be under src")
-        .with_extension("");
-    let mut segments = vec!["crate".to_owned()];
-    segments.extend(
-        relative
-            .components()
-            .map(|component| component.as_os_str().to_string_lossy().into_owned()),
-    );
-    segments
-}
-
-fn source_depends_on(
-    source: &str,
-    forbidden_module: &str,
-    current_module: &[String],
-) -> syn::Result<bool> {
-    let forbidden_segments = forbidden_module.split("::").collect::<Vec<_>>();
-    let syntax = syn::parse_file(source)?;
-    let crate_root_aliases = crate_root_aliases(&syntax.items);
-    let mut visitor = DependencyVisitor {
-        forbidden_segments: &forbidden_segments,
-        current_module: current_module.to_vec(),
-        module_alias_bindings: module_alias_bindings(current_module, &crate_root_aliases),
-        crate_root_aliases,
-        found: false,
-    };
-    visitor.visit_file(&syntax);
-    Ok(visitor.found)
-}
-
-fn module_alias_bindings(current_module: &[String], aliases: &HashSet<String>) -> Vec<Vec<String>> {
-    aliases
+fn assert_sources_do_not_use_external_source_inclusion(paths: &[PathBuf]) {
+    let violations = paths
         .iter()
-        .map(|alias| {
-            current_module
-                .iter()
-                .cloned()
-                .chain(std::iter::once(alias.clone()))
-                .collect()
+        .filter(|path| {
+            let source = fs::read_to_string(path).expect("Rust source should be readable");
+            let tokens = source.parse::<TokenStream>().unwrap_or_else(|error| {
+                panic!(
+                    "{} should contain valid Rust tokens: {error}",
+                    path.display()
+                )
+            });
+            token_stream_includes_external_rust(tokens)
         })
-        .collect()
+        .collect::<Vec<_>>();
+
+    assert!(
+        violations.is_empty(),
+        "layer-checked sources must not include Rust from unscanned paths: {violations:?}"
+    );
 }
 
-fn crate_root_aliases(items: &[Item]) -> HashSet<String> {
-    let mut aliases = HashSet::new();
-    for item in items {
-        if let Item::Use(item_use) = item {
-            collect_crate_root_aliases(&item_use.tree, &mut Vec::new(), &mut aliases);
+fn token_stream_includes_external_rust(tokens: TokenStream) -> bool {
+    let tokens = tokens.into_iter().collect::<Vec<_>>();
+
+    for (index, token) in tokens.iter().enumerate() {
+        if token_is_identifier(token, "include") {
+            return true;
+        }
+
+        if matches!(token, TokenTree::Punct(punctuation) if punctuation.as_char() == '#')
+            && let Some(TokenTree::Group(group)) = tokens.get(index + 1)
+            && group.delimiter() == Delimiter::Bracket
+            && token_stream_contains_path_assignment(group.stream())
+        {
+            return true;
+        }
+
+        if let TokenTree::Group(group) = token
+            && token_stream_includes_external_rust(group.stream())
+        {
+            return true;
         }
     }
-    aliases
+
+    false
 }
 
-fn block_crate_root_aliases(statements: &[Stmt]) -> HashSet<String> {
-    let mut aliases = HashSet::new();
-    for statement in statements {
-        if let Stmt::Item(Item::Use(item_use)) = statement {
-            collect_crate_root_aliases(&item_use.tree, &mut Vec::new(), &mut aliases);
+fn token_stream_contains_path_assignment(tokens: TokenStream) -> bool {
+    let tokens = tokens.into_iter().collect::<Vec<_>>();
+
+    for (index, token) in tokens.iter().enumerate() {
+        if token_is_identifier(token, "path")
+            && matches!(tokens.get(index + 1), Some(TokenTree::Punct(punctuation)) if punctuation.as_char() == '=')
+        {
+            return true;
+        }
+
+        if let TokenTree::Group(group) = token
+            && token_stream_contains_path_assignment(group.stream())
+        {
+            return true;
         }
     }
-    aliases
+
+    false
 }
 
-fn collect_crate_root_aliases(
-    tree: &UseTree,
-    prefix: &mut Vec<String>,
-    aliases: &mut HashSet<String>,
-) {
-    match tree {
-        UseTree::Path(path) => {
-            prefix.push(path.ident.to_string());
-            collect_crate_root_aliases(&path.tree, prefix, aliases);
-            prefix.pop();
-        }
-        UseTree::Rename(rename) => {
-            let target = rename.ident.to_string();
-            if (prefix.is_empty() && target == "crate")
-                || (prefix.as_slice() == ["crate"] && target == "self")
-            {
-                aliases.insert(rename.rename.to_string());
-            }
-        }
-        UseTree::Group(group) => {
-            for item in &group.items {
-                collect_crate_root_aliases(item, prefix, aliases);
-            }
-        }
-        UseTree::Name(_) | UseTree::Glob(_) => {}
-    }
+fn token_is_identifier(token: &TokenTree, expected: &str) -> bool {
+    let TokenTree::Ident(identifier) = token else {
+        return false;
+    };
+    let identifier = identifier.to_string();
+    identifier.strip_prefix("r#").unwrap_or(&identifier) == expected
 }
 
-struct DependencyVisitor<'a> {
-    forbidden_segments: &'a [&'a str],
-    current_module: Vec<String>,
-    crate_root_aliases: HashSet<String>,
-    module_alias_bindings: Vec<Vec<String>>,
-    found: bool,
+/// Layer names are reserved identifiers in lower-level source files.
+///
+/// This deliberately checks tokens instead of reproducing Rust name
+/// resolution. Any code token naming an upper layer is rejected, so grouped
+/// imports, relative paths, aliases, block scopes, and macro input cannot
+/// bypass the boundary. Comments and literals are not identifier tokens.
+fn source_mentions_identifier(
+    source: &str,
+    forbidden_identifier: &str,
+) -> Result<bool, proc_macro2::LexError> {
+    let tokens = source.parse::<TokenStream>()?;
+    Ok(token_stream_mentions_identifier(
+        tokens,
+        forbidden_identifier,
+    ))
 }
 
-impl DependencyVisitor<'_> {
-    fn matches_segments<'a>(&self, segments: impl IntoIterator<Item = &'a str>) -> bool {
-        let Some(normalized) = self.normalize_segments(segments) else {
-            return false;
-        };
-        let mut actual = normalized.iter().map(String::as_str);
-        self.forbidden_segments
-            .iter()
-            .all(|expected| actual.next() == Some(*expected))
-    }
-
-    fn normalize_segments<'a>(
-        &self,
-        segments: impl IntoIterator<Item = &'a str>,
-    ) -> Option<Vec<String>> {
-        let segments = segments.into_iter().collect::<Vec<_>>();
-        let Some(first) = segments.first().copied() else {
-            return Some(Vec::new());
-        };
-
-        let normalized = match first {
-            "crate" => Some(segments.into_iter().map(str::to_owned).collect()),
-            "self" => Some(
-                self.current_module
-                    .iter()
-                    .cloned()
-                    .chain(segments.into_iter().skip(1).map(str::to_owned))
-                    .collect(),
-            ),
-            "super" => {
-                let mut normalized = self.current_module.clone();
-                let super_count = segments
-                    .iter()
-                    .take_while(|segment| **segment == "super")
-                    .count();
-                for _ in 0..super_count {
-                    if normalized.len() == 1 {
-                        return None;
-                    }
-                    normalized.pop();
-                }
-                normalized.extend(segments.into_iter().skip(super_count).map(str::to_owned));
-                Some(normalized)
-            }
-            alias if self.crate_root_aliases.contains(alias) => Some(
-                std::iter::once("crate".to_owned())
-                    .chain(segments.into_iter().skip(1).map(str::to_owned))
-                    .collect(),
-            ),
-            _ => Some(segments.into_iter().map(str::to_owned).collect()),
-        }?;
-
-        for binding in &self.module_alias_bindings {
-            if normalized.starts_with(binding) {
-                return Some(
-                    std::iter::once("crate".to_owned())
-                        .chain(normalized.into_iter().skip(binding.len()))
-                        .collect(),
-                );
-            }
+fn token_stream_mentions_identifier(tokens: TokenStream, forbidden_identifier: &str) -> bool {
+    tokens.into_iter().any(|token| match token {
+        TokenTree::Ident(_) => token_is_identifier(&token, forbidden_identifier),
+        TokenTree::Group(group) => {
+            token_stream_mentions_identifier(group.stream(), forbidden_identifier)
         }
-
-        Some(normalized)
-    }
-
-    fn visit_use_tree(&mut self, tree: &UseTree, mut prefix: Vec<String>) {
-        match tree {
-            UseTree::Path(path) => {
-                prefix.push(path.ident.to_string());
-                self.visit_use_tree(&path.tree, prefix);
-            }
-            UseTree::Name(name) => {
-                prefix.push(name.ident.to_string());
-                self.found |= self.matches_segments(prefix.iter().map(String::as_str));
-            }
-            UseTree::Rename(rename) => {
-                prefix.push(rename.ident.to_string());
-                self.found |= self.matches_segments(prefix.iter().map(String::as_str));
-            }
-            UseTree::Glob(_) => {
-                self.found |= self.matches_segments(prefix.iter().map(String::as_str));
-            }
-            UseTree::Group(group) => {
-                for item in &group.items {
-                    self.visit_use_tree(item, prefix.clone());
-                }
-            }
-        }
-    }
-}
-
-impl<'ast> Visit<'ast> for DependencyVisitor<'_> {
-    fn visit_block(&mut self, node: &'ast Block) {
-        let mut scoped_aliases = self.crate_root_aliases.clone();
-        scoped_aliases.extend(block_crate_root_aliases(&node.stmts));
-        let parent_aliases = std::mem::replace(&mut self.crate_root_aliases, scoped_aliases);
-        syn::visit::visit_block(self, node);
-        self.crate_root_aliases = parent_aliases;
-    }
-
-    fn visit_item_mod(&mut self, node: &'ast ItemMod) {
-        if let Some((_, items)) = &node.content {
-            self.current_module.push(node.ident.to_string());
-            let child_aliases = crate_root_aliases(items);
-            let parent_aliases =
-                std::mem::replace(&mut self.crate_root_aliases, child_aliases.clone());
-            let parent_binding_count = self.module_alias_bindings.len();
-            self.module_alias_bindings
-                .extend(module_alias_bindings(&self.current_module, &child_aliases));
-            syn::visit::visit_item_mod(self, node);
-            self.module_alias_bindings.truncate(parent_binding_count);
-            self.crate_root_aliases = parent_aliases;
-            self.current_module.pop();
-        } else {
-            syn::visit::visit_item_mod(self, node);
-        }
-    }
-
-    fn visit_item_use(&mut self, node: &'ast ItemUse) {
-        self.visit_use_tree(&node.tree, Vec::new());
-    }
-
-    fn visit_path(&mut self, node: &'ast RustPath) {
-        let segments = node
-            .segments
-            .iter()
-            .map(|segment| segment.ident.to_string())
-            .collect::<Vec<_>>();
-        self.found |= self.matches_segments(segments.iter().map(String::as_str));
-        syn::visit::visit_path(self, node);
-    }
+        TokenTree::Punct(_) | TokenTree::Literal(_) => false,
+    })
 }
 
 #[test]
-fn dependency_detection_covers_grouped_imports() {
-    let current_module = ["crate", "presentation", "output"].map(str::to_owned);
+fn identifier_detection_covers_dependency_spellings() {
     for source in [
+        "use crate::application::CliError;",
         "use crate::{application::CliError, protocol};",
-        "use crate::{protocol, application::CliError};",
-        "use crate::{application as app, protocol};",
-        "fn example() { let _ = crate::application::run; }",
-    ] {
-        assert!(
-            source_depends_on(source, "crate::application", &current_module)
-                .expect("fixture should parse"),
-            "dependency should be detected in {source}"
-        );
-    }
-}
-
-#[test]
-fn dependency_detection_covers_relative_imports() {
-    let current_module = ["crate", "presentation", "output"].map(str::to_owned);
-    for source in [
         "use super::super::application::CliError;",
-        "use super::{super::application::CliError};",
-        "fn example() { let _ = super::super::application::run; }",
-        "mod nested { use super::super::super::application::CliError; }",
-    ] {
-        assert!(
-            source_depends_on(source, "crate::application", &current_module)
-                .expect("fixture should parse"),
-            "relative dependency should be detected in {source}"
-        );
-    }
-}
-
-#[test]
-fn dependency_detection_covers_crate_root_aliases() {
-    let current_module = ["crate", "presentation", "output"].map(str::to_owned);
-    for source in [
         "use crate as root; use root::application::CliError;",
         "use crate::{self as root}; use root::application::CliError;",
-        "use root::{application::CliError}; use crate as root;",
-        "mod nested { use crate as root; use root::application::CliError; }",
-    ] {
-        assert!(
-            source_depends_on(source, "crate::application", &current_module)
-                .expect("fixture should parse"),
-            "aliased dependency should be detected in {source}"
-        );
-    }
-}
-
-#[test]
-fn dependency_detection_covers_block_scoped_crate_aliases() {
-    let current_module = ["crate", "presentation", "output"].map(str::to_owned);
-    for source in [
+        "use super::super as root; use root::application::CliError;",
+        "use super::{super as root}; use root::application::CliError;",
+        "use crate as root; use root as root2; use root2::application::CliError;",
+        "extern crate self as root; use root::application::CliError;",
         "fn example() { use crate as root; let _ = root::application::run; }",
-        "fn example() { let _ = root::application::run; use crate as root; }",
-        "fn example() { { use crate::{self as root}; let _ = root::application::run; } }",
-    ] {
-        assert!(
-            source_depends_on(source, "crate::application", &current_module)
-                .expect("fixture should parse"),
-            "block-scoped aliased dependency should be detected in {source}"
-        );
-    }
-}
-
-#[test]
-fn dependency_detection_resolves_aliases_after_relative_paths() {
-    let current_module = ["crate", "presentation", "output"].map(str::to_owned);
-    for source in [
         "use crate as root; fn example() { let _ = self::root::application::run; }",
-        "use crate as root; mod nested { fn example() { let _ = super::root::application::run; } }",
     ] {
         assert!(
-            source_depends_on(source, "crate::application", &current_module)
-                .expect("fixture should parse"),
-            "relative aliased dependency should be detected in {source}"
+            source_mentions_identifier(source, "application").expect("fixture should lex"),
+            "layer identifier should be detected in {source}"
         );
     }
 }
 
 #[test]
-fn module_paths_follow_rust_file_layout() {
-    let source_root = Path::new("/workspace/src");
-
-    assert_eq!(
-        module_path(source_root, Path::new("/workspace/src/presentation.rs")),
-        ["crate", "presentation"]
-    );
-    assert_eq!(
-        module_path(
-            source_root,
-            Path::new("/workspace/src/presentation/output.rs")
-        ),
-        ["crate", "presentation", "output"]
-    );
-}
-
-#[test]
-fn dependency_detection_ignores_similar_names_and_text() {
-    let current_module = ["crate", "presentation", "output"].map(str::to_owned);
+fn identifier_detection_covers_macro_tokens_and_raw_identifiers() {
     for source in [
-        "use crate::{application_support::CliError, protocol};",
-        "use super::application::CliError;",
-        "use self::application::CliError;",
-        "const EXAMPLE: &str = \"crate::application::CliError\";",
-        "// use crate::{application::CliError};",
+        "delegate!(crate::application::run());",
+        "macro_rules! delegate { () => { crate::application::run() } }",
+        "#[derive(crate::application::Example)] struct Example;",
+        "use crate::r#application::CliError;",
     ] {
         assert!(
-            !source_depends_on(source, "crate::application", &current_module)
-                .expect("fixture should parse"),
-            "dependency should not be detected in {source}"
+            source_mentions_identifier(source, "application").expect("fixture should lex"),
+            "layer identifier should be detected in {source}"
         );
     }
 }
 
 #[test]
-fn lower_layers_do_not_depend_on_application() {
-    let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let mut lower_layer_sources = rust_sources_under(&source_root.join("infrastructure"));
-    lower_layer_sources.extend(rust_sources_under(&source_root.join("presentation")));
-    lower_layer_sources.push(source_root.join("infrastructure.rs"));
-    lower_layer_sources.push(source_root.join("presentation.rs"));
-
-    assert_sources_do_not_depend_on(&lower_layer_sources, "crate::application");
+fn identifier_detection_ignores_comments_literals_and_similar_identifiers() {
+    for source in [
+        "// use crate::application::CliError;",
+        "/* use crate::application::CliError; */",
+        "const EXAMPLE: &str = \"crate::application::CliError\";",
+        "const EXAMPLE: &str = r#\"crate::application::CliError\"#;",
+        "use crate::application_support::CliError;",
+        "let application_count = 1;",
+    ] {
+        assert!(
+            !source_mentions_identifier(source, "application").expect("fixture should lex"),
+            "layer identifier should not be detected in {source}"
+        );
+    }
 }
 
 #[test]
-fn shared_error_module_does_not_depend_on_application_or_presentation() {
-    let error_source = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/error.rs");
-    let sources = vec![error_source];
+fn layer_names_are_intentionally_reserved_as_identifiers() {
+    for source in [
+        "let application = 1;",
+        "#[cfg(application)] fn example() {}",
+    ] {
+        assert!(
+            source_mentions_identifier(source, "application").expect("fixture should lex"),
+            "reserved layer identifier should be detected in {source}"
+        );
+    }
+}
 
-    assert_sources_do_not_depend_on(&sources, "crate::application");
-    assert_sources_do_not_depend_on(&sources, "crate::presentation");
+#[test]
+fn external_rust_inclusion_detection_is_token_aware() {
+    for source in [
+        "include!(\"generated.rs\");",
+        "r#include!(\"generated.rs\");",
+        "use std::include as load; load!(\"generated.rs\");",
+        "mod nested { include!(\"generated.rs\"); }",
+        "#[path = \"generated.rs\"] mod generated;",
+        "#[r#path = \"generated.rs\"] mod generated;",
+        "#[cfg_attr(all(), path = \"generated.rs\")] mod generated;",
+        "#[r#cfg_attr(all(), r#path = \"generated.rs\")] mod generated;",
+    ] {
+        let tokens = source.parse::<TokenStream>().expect("fixture should lex");
+        assert!(
+            token_stream_includes_external_rust(tokens),
+            "external Rust inclusion should be detected in {source}"
+        );
+    }
+
+    for source in [
+        "include_str!(\"fixture.txt\");",
+        "use std::path::Path;",
+        "const EXAMPLE: &str = \"include!(generated.rs) #[path]\";",
+    ] {
+        let tokens = source.parse::<TokenStream>().expect("fixture should lex");
+        assert!(
+            !token_stream_includes_external_rust(tokens),
+            "external Rust inclusion should not be detected in {source}"
+        );
+    }
+}
+
+#[test]
+fn library_crate_contains_only_lower_layers() {
+    let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let source = fs::read_to_string(source_root.join("lib.rs")).expect("lib.rs should be readable");
+    let tokens = source.parse::<TokenStream>().expect("lib.rs should lex");
+
+    assert_eq!(
+        tokens.to_string(),
+        "pub mod cli ; pub mod domain ; pub mod infrastructure ; pub mod protocol ;"
+    );
+}
+
+#[test]
+fn lower_library_layers_follow_the_dependency_order() {
+    let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let protocol_sources = vec![source_root.join("protocol.rs")];
+    let domain_sources = vec![source_root.join("domain.rs")];
+    let mut cli_sources = rust_sources_under(&source_root.join("cli"));
+    cli_sources.push(source_root.join("cli.rs"));
+    let mut infrastructure_sources = rust_sources_under(&source_root.join("infrastructure"));
+    infrastructure_sources.push(source_root.join("infrastructure.rs"));
+
+    for forbidden in ["cli", "domain", "infrastructure"] {
+        assert_sources_do_not_reference_layer(&protocol_sources, forbidden);
+    }
+    for forbidden in ["cli", "infrastructure"] {
+        assert_sources_do_not_reference_layer(&domain_sources, forbidden);
+    }
+    for forbidden in ["domain", "infrastructure", "protocol"] {
+        assert_sources_do_not_reference_layer(&cli_sources, forbidden);
+    }
+    assert_sources_do_not_reference_layer(&infrastructure_sources, "cli");
+
+    let all_sources = protocol_sources
+        .into_iter()
+        .chain(domain_sources)
+        .chain(cli_sources)
+        .chain(infrastructure_sources)
+        .collect::<Vec<_>>();
+    assert_sources_do_not_use_external_source_inclusion(&all_sources);
+}
+
+#[test]
+fn binary_layers_follow_the_dependency_order() {
+    let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let error_sources = vec![source_root.join("error.rs")];
+    let mut presentation_sources = rust_sources_under(&source_root.join("presentation"));
+    presentation_sources.push(source_root.join("presentation.rs"));
+
+    for forbidden in ["application", "presentation"] {
+        assert_sources_do_not_reference_layer(&error_sources, forbidden);
+    }
+    assert_sources_do_not_reference_layer(&presentation_sources, "application");
+
+    let checked_sources = error_sources
+        .into_iter()
+        .chain(presentation_sources)
+        .collect::<Vec<_>>();
+    assert_sources_do_not_use_external_source_inclusion(&checked_sources);
 }

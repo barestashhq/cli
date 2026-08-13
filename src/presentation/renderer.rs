@@ -54,7 +54,6 @@ fn dimensions(interactive: bool) -> (usize, usize) {
 #[derive(Clone, Copy, Debug)]
 pub enum Tone {
     Accent,
-    Danger,
     Method,
     Muted,
     Success,
@@ -219,7 +218,6 @@ impl OutputRenderer {
         }
         let color = match tone {
             Tone::Accent => "\x1b[36m",
-            Tone::Danger => "\x1b[31m",
             Tone::Method => "\x1b[34m",
             Tone::Muted => "\x1b[90m",
             Tone::Success => "\x1b[32m",

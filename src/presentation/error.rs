@@ -5,7 +5,7 @@ use crate::presentation::sanitize_terminal_text;
 use crate::protocol::{RestErrorCode, RestErrorResponse};
 
 pub fn print_cli_error(error: &CliError) {
-    if matches!(error, CliError::Cancelled | CliError::AlreadyReported) {
+    if matches!(error, CliError::AlreadyReported) {
         return;
     }
 
@@ -18,11 +18,6 @@ pub fn print_cli_error(error: &CliError) {
             }
         }
     }
-}
-
-pub fn print_api_error(response: &RestErrorResponse, retry_after: Option<u64>) {
-    let mut stderr = io::stderr().lock();
-    write_api_error(&mut stderr, response, retry_after);
 }
 
 fn write_api_error(

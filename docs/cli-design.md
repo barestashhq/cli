@@ -54,6 +54,12 @@ concerns separate:
 - `presentation` owns human, JSON, JSONL, and the intentionally simple tail
   view.
 
+The library crate contains only the reusable lower layers: `cli`, `protocol`,
+`domain`, and `infrastructure`. The binary crate owns `error`, `presentation`,
+and `application`, so lower layers cannot import those upper layers. Boundary
+tests reserve upper-layer identifiers in the remaining same-crate layers and
+reject source inclusion that would bypass the checked module tree.
+
 The binary never starts Node.js and no TypeScript runtime is part of release
 artifacts. The migration inventory in `rust-migration-inventory.md` records the
 reference behavior and the small set of deliberate validation/security fixes.
