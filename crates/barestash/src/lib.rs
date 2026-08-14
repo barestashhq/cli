@@ -1,3 +1,5 @@
-pub mod cli;
-pub mod domain;
-pub mod infrastructure;
+mod cli;
+mod command;
+mod runner;
+
+pub use runner::run;

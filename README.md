@@ -236,19 +236,26 @@ link-local addresses and pinned for the process to prevent DNS rebinding.
 
 ## Development
 
-The repository is a Cargo workspace with three packages:
+The repository is a virtual Cargo workspace with seven packages:
 
-- `barestash`: the executable CLI and its terminal/local-state behavior
+- `barestash`: the executable, clap parser, and composition root
+- `barestash-application`: CLI use cases and authenticated orchestration
 - `barestash-client`: reusable HTTP and SSE transport for the Barestash API
+- `barestash-domain`: CLI-specific values and pure transformations
+- `barestash-infrastructure`: configuration, credentials, locking, browser,
+  and terminal adapters
+- `barestash-presentation`: human, JSON, JSONL, and interactive terminal output
 - `barestash-protocol`: wire contracts and protocol-level validation
 
-The CLI depends on the client and protocol packages, while the client depends
-only on the protocol package. All packages live under `crates/`; the repository
-root is a virtual workspace. `just` is the documented command surface:
+The packages form an acyclic dependency graph and are split into compilation
+units so local Cargo and CI caches can reuse unchanged CLI layers. All packages
+live under `crates/`; none are published to crates.io. `just` is the documented
+command surface:
 
 ```bash
 just install
 just check
+just check-package barestash-application
 just test
 just build
 just package

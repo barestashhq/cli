@@ -38,8 +38,8 @@ The command design should emphasize:
 
 ## Native implementation boundaries
 
-The repository root is a virtual Cargo workspace. Its three packages represent
-independently meaningful boundaries:
+The repository root is a virtual Cargo workspace. Its packages separate the
+wire and transport libraries from cacheable internal CLI compilation units:
 
 - `barestash-protocol` owns JSON/SSE wire contracts, resource identifiers,
   authorization scopes, bearer-token rules, and protocol-level validation. It
@@ -48,19 +48,22 @@ independently meaningful boundaries:
 - `barestash-client` owns API base URL handling, private/link-local address
   protections, secure redirects, HTTP request and REST error decoding, and SSE
   transport. It depends on `barestash-protocol`.
-- `barestash` owns the executable CLI: clap parsing, application orchestration,
-  human/JSON/JSONL presentation, local configuration, credential storage and
-  migration, file locking, browser/terminal adapters, and CLI-specific domain
-  transformations. It composes both library packages.
+- `barestash-domain` owns CLI-specific values and pure transformations.
+- `barestash-infrastructure` owns local configuration, credential storage and
+  migration, file locking, and browser/terminal adapters.
+- `barestash-presentation` owns human, JSON, JSONL, and interactive terminal
+  output.
+- `barestash-application` owns authenticated orchestration and the auth,
+  endpoint, event, and token use cases.
+- `barestash` owns clap parsing, composes the internal crates, and produces the
+  executable.
 
-Dependencies flow from `barestash` to `barestash-client` to
-`barestash-protocol`; the CLI also uses protocol contracts directly. The
-packages do not depend back on the CLI and do not form dependency cycles.
-
-Within the executable package, `cli`, `domain`, `error`, `application`,
-`infrastructure`, and `presentation` remain separate modules. HTTP and SSE
-transport live in the client package rather than the CLI infrastructure
-module.
+Dependencies are acyclic. The application composes the domain,
+infrastructure, presentation, client, and protocol packages; the executable
+adds argument parsing and final error routing. HTTP and SSE transport remain in
+the client package rather than the CLI infrastructure package. The internal
+CLI packages are not published to crates.io; the supported compatibility
+surface is the executable's behavior rather than their Rust APIs.
 
 The binary never starts Node.js and no TypeScript runtime is part of release
 artifacts. The migration inventory in `rust-migration-inventory.md` records the

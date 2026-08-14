@@ -24,43 +24,17 @@ name = "barestash"
 path = "src/main.rs"
 
 [dependencies]
-barestash-client.workspace = true
-barestash-protocol.workspace = true
-base64 = "0.22.1"
-chrono = { version = "0.4.41", default-features = false, features = ["clock", "serde"] }
+barestash-application.workspace = true
+barestash-presentation.workspace = true
 clap = { version = "4.5.45", features = ["derive"] }
-fs4 = "1.1.0"
-hostname = "0.4.1"
-home = "0.5.11"
-keyring = "4.1.6"
-reqwest.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-terminal_size = "0.4.3"
-tempfile = "3.21.0"
-thiserror.workspace = true
 tokio.workspace = true
-toml = "1.1"
-unicode-segmentation = "1.12.0"
-unicode-width = "0.2.1"
-url.workspace = true
-uuid = { version = "1.18.0", features = ["v4"] }
-
-[target.'cfg(all(unix, not(any(target_os = "macos", target_os = "ios", target_os = "android"))))'.dependencies]
-# `keytar` used `service` + `account` Secret Service attributes, while the
-# modern keyring backend uses `service` + `username`. Read and remove the old
-# item during migration so Linux users keep their existing login.
-secret-service = { version = "5.1.0", default-features = false, features = ["rt-tokio-crypto-rust"] }
-
-[target.'cfg(windows)'.dependencies]
-# keytar addressed Windows credentials as `service/account`; access that
-# target explicitly so existing TypeScript CLI logins can be migrated.
-keyring-core = "1.0.0"
-windows-native-keyring-store = "1.1.0"
 
 [dev-dependencies]
 assert_cmd = "2.0.17"
 predicates = "3.1.3"
+serde_json.workspace = true
+tempfile = "3.21.0"
+toml = "1.1"
 wiremock.workspace = true
 
 [lints]

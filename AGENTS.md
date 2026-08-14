@@ -13,15 +13,23 @@ The command and output contract is documented in
 
 - Keep the repository root as a virtual Cargo workspace. All packages belong
   under `crates/`; the `barestash` binary belongs to `crates/barestash`.
-- Keep `crates/barestash/src/main.rs` small; parsing, application behavior,
-  infrastructure, and presentation remain separate modules.
+- Keep `crates/barestash/src/main.rs` small. The `barestash` package owns clap
+  parsing and composition; application behavior, CLI domain transformations,
+  infrastructure adapters, and presentation live in their corresponding
+  internal workspace crates.
 - Use the Rust 2018-style module layout: define parent modules as
   `src/<module>.rs` and child modules under `src/<module>/`; do not add
   `mod.rs` files.
 - Keep wire contracts and portable protocol helpers in `barestash-protocol`,
   reusable HTTP/SSE transport in `barestash-client`, and CLI-only behavior in
-  `barestash`. Dependencies flow from `barestash` to `barestash-client` to
-  `barestash-protocol`; `barestash` may also depend directly on the protocol.
+  the `barestash-*` internal crates. Dependencies remain acyclic: the binary
+  composes the application and presentation crates; the application composes
+  the domain, infrastructure, presentation, client, and protocol crates; the
+  client and domain crates may depend on the protocol, while infrastructure
+  and presentation may depend on the CLI domain.
+- Keep internal workspace crates unpublished. The supported compatibility
+  surface is the `barestash` command, output, configuration, and credential
+  contract rather than the Rust APIs between workspace crates.
 - Do not add server implementation, deployment configuration, private
   operational documentation, or backend-only contracts.
 
@@ -41,8 +49,8 @@ The command and output contract is documented in
 - Never print or commit raw tokens, refresh credentials, endpoint secrets,
   cookies, `Authorization`, or `x-barestash-secret` except where a one-time
   creation result explicitly owns the secret on stdout.
-- Keep sensitive-header redaction aligned with
-  `crates/barestash/src/domain.rs` and cover additions with tests.
+- Keep sensitive-header redaction aligned with `barestash-domain` and cover
+  additions with tests.
 - Treat body content as potentially sensitive even though the CLI does not
   redact it by default.
 - Preserve API URL and same-origin redirect validation for authenticated
