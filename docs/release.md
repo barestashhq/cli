@@ -15,13 +15,14 @@ just ci
 This checks formatting, runs Clippy with warnings denied, and runs tests across
 all workspace packages. It also verifies the `barestash` Cargo package
 allowlist, builds the release binary, and smoke-tests its version output. The
-GitHub Actions check workflow repeats the quality gates on Ubuntu, macOS, and
-Windows.
+GitHub Actions CI workflow runs the same `just ci` gate on Ubuntu, macOS, and
+Windows. Ubuntu runs first; macOS and Windows start only after it succeeds.
 
 ## Publishing
 
 Push an annotated `vMAJOR.MINOR.PATCH` tag only after the reviewed version has
-landed on `main`. The release workflow builds these targets:
+landed on `main`. The release workflow reuses the three-platform CI workflow,
+validates that the tag matches the Cargo version, and then builds these targets:
 
 | Target | Archive |
 | --- | --- |
