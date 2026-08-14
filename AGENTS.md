@@ -12,21 +12,19 @@ The command and output contract is documented in
 ## Repository boundaries
 
 - Keep the repository root as a virtual Cargo workspace. All packages belong
-  under `crates/`; the `barestash` binary belongs to `crates/barestash`.
-- Keep `crates/barestash/src/main.rs` small. The `barestash` package owns clap
-  parsing and composition; application behavior, CLI domain transformations,
-  infrastructure adapters, and presentation live in their corresponding
-  internal workspace crates.
+  under `crates/`; the `barestash` binary belongs to `crates/cli`.
+- Keep `crates/cli/src/main.rs` small. Organize CLI-only behavior by the
+  `auth`, `endpoints`, `events`, and `tokens` features; each feature owns its
+  clap inputs, use cases, transformations, and feature-specific presentation.
 - Use the Rust 2018-style module layout: define parent modules as
   `src/<module>.rs` and child modules under `src/<module>/`; do not add
   `mod.rs` files.
-- Keep wire contracts and portable protocol helpers in `barestash-protocol`,
-  reusable HTTP/SSE transport in `barestash-client`, and CLI-only behavior in
-  the `barestash-*` internal crates. Dependencies remain acyclic: the binary
-  composes the application and presentation crates; the application composes
-  the domain, infrastructure, presentation, client, and protocol crates; the
-  client and domain crates may depend on the protocol, while infrastructure
-  and presentation may depend on the CLI domain.
+- Keep wire contracts and portable protocol helpers in `crates/protocol`,
+  reusable HTTP/SSE transport in `crates/client`, and config, credentials, and
+  locking in `crates/local-state`. Dependencies remain acyclic: the CLI may
+  depend on all three; the client may depend on the protocol; local-state stays
+  independent of the protocol. Do not create crates for CLI-only architectural
+  layers without an independent reuse or security boundary.
 - Keep internal workspace crates unpublished. The supported compatibility
   surface is the `barestash` command, output, configuration, and credential
   contract rather than the Rust APIs between workspace crates.
@@ -49,8 +47,8 @@ The command and output contract is documented in
 - Never print or commit raw tokens, refresh credentials, endpoint secrets,
   cookies, `Authorization`, or `x-barestash-secret` except where a one-time
   creation result explicitly owns the secret on stdout.
-- Keep sensitive-header redaction aligned with `barestash-domain` and cover
-  additions with tests.
+- Keep sensitive-header redaction aligned with `crates/cli/src/events/headers.rs`
+  and cover additions with tests.
 - Treat body content as potentially sensitive even though the CLI does not
   redact it by default.
 - Preserve API URL and same-origin redirect validation for authenticated

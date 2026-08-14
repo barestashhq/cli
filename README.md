@@ -236,26 +236,26 @@ link-local addresses and pinned for the process to prevent DNS rebinding.
 
 ## Development
 
-The repository is a virtual Cargo workspace with seven packages:
+The repository is a virtual Cargo workspace with four packages. Directory
+names stay concise inside the repository while Cargo package names retain the
+`barestash` identity:
 
-- `barestash`: the executable, clap parser, and composition root
-- `barestash-application`: CLI use cases and authenticated orchestration
-- `barestash-client`: reusable HTTP and SSE transport for the Barestash API
-- `barestash-domain`: CLI-specific values and pure transformations
-- `barestash-infrastructure`: configuration, credentials, locking, browser,
-  and terminal adapters
-- `barestash-presentation`: human, JSON, JSONL, and interactive terminal output
-- `barestash-protocol`: wire contracts and protocol-level validation
+- `crates/cli` (`barestash`): the executable and feature-oriented CLI
+- `crates/client` (`barestash-client`): reusable HTTP and SSE transport
+- `crates/local-state` (`barestash-local-state`): secure config, credentials,
+  and locking
+- `crates/protocol` (`barestash-protocol`): wire contracts and validation
 
-The packages form an acyclic dependency graph and are split into compilation
-units so local Cargo and CI caches can reuse unchanged CLI layers. All packages
-live under `crates/`; none are published to crates.io. `just` is the documented
-command surface:
+The CLI groups clap inputs, orchestration, transformations, and presentation by
+the `auth`, `endpoints`, `events`, and `tokens` features. Separate crates are
+reserved for reusable transport/protocol code and the security-sensitive local
+state boundary. All packages live under `crates/`; none are published to
+crates.io. `just` is the documented command surface:
 
 ```bash
 just install
 just check
-just check-package barestash-application
+just check-package barestash-local-state
 just test
 just build
 just package
