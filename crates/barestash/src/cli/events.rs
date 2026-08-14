@@ -1,3 +1,4 @@
+#[cfg(test)]
 use std::{fmt, str::FromStr, time::Duration};
 
 use clap::{Args, Subcommand};
@@ -110,33 +111,33 @@ pub struct EventStreamArgs {
 }
 
 /// Validated polling delay.
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PollInterval(Duration);
 
+#[cfg(test)]
 impl PollInterval {
-    #[must_use]
-    pub const fn as_duration(self) -> Duration {
-        self.0
-    }
-
     #[must_use]
     pub fn as_millis(self) -> u128 {
         self.0.as_millis()
     }
 }
 
+#[cfg(test)]
 impl Default for PollInterval {
     fn default() -> Self {
         Self(Duration::from_secs(2))
     }
 }
 
+#[cfg(test)]
 impl fmt::Display for PollInterval {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "{}ms", self.0.as_millis())
     }
 }
 
+#[cfg(test)]
 impl FromStr for PollInterval {
     type Err = String;
 

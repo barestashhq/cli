@@ -265,31 +265,37 @@ name = "barestash"
 version = "0.0.1"
 dependencies = [
  "assert_cmd",
- "barestash-client",
- "barestash-protocol",
- "base64",
- "chrono",
+ "barestash-application",
+ "barestash-presentation",
  "clap",
- "fs4",
+ "predicates",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml",
+ "wiremock",
+]
+
+[[package]]
+name = "barestash-application"
+version = "0.0.1"
+dependencies = [
+ "barestash-client",
+ "barestash-domain",
+ "barestash-infrastructure",
+ "barestash-presentation",
+ "barestash-protocol",
+ "chrono",
  "home",
  "hostname",
- "keyring",
- "keyring-core",
- "predicates",
  "reqwest",
- "secret-service",
  "serde",
  "serde_json",
  "tempfile",
- "terminal_size",
  "thiserror",
  "tokio",
- "toml",
- "unicode-segmentation",
- "unicode-width",
  "url",
  "uuid",
- "windows-native-keyring-store",
  "wiremock",
 ]
 
@@ -305,6 +311,48 @@ dependencies = [
  "tokio",
  "url",
  "wiremock",
+]
+
+[[package]]
+name = "barestash-domain"
+version = "0.0.1"
+dependencies = [
+ "barestash-protocol",
+ "base64",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
+name = "barestash-infrastructure"
+version = "0.0.1"
+dependencies = [
+ "barestash-domain",
+ "fs4",
+ "keyring",
+ "keyring-core",
+ "secret-service",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "toml",
+ "windows-native-keyring-store",
+]
+
+[[package]]
+name = "barestash-presentation"
+version = "0.0.1"
+dependencies = [
+ "barestash-domain",
+ "barestash-protocol",
+ "serde",
+ "serde_json",
+ "terminal_size",
+ "thiserror",
+ "unicode-segmentation",
+ "unicode-width",
 ]
 
 [[package]]

@@ -11,6 +11,12 @@ install:
 [group('quality')]
 check: format-check lint test
 
+[doc('Run Clippy and tests for one workspace package')]
+[group('quality')]
+check-package package:
+    cargo clippy --package "{{ package }}" --all-targets --all-features --locked -- -D warnings
+    cargo test --package "{{ package }}" --all-features --locked
+
 [doc('Format Rust source files')]
 [group('quality')]
 format:

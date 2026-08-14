@@ -1,0 +1,20 @@
+[package]
+name = "barestash-domain"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Pure domain transformations and compatibility rules for the Barestash CLI"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[dependencies]
+barestash-protocol.workspace = true
+base64 = "0.22.1"
+serde.workspace = true
+serde_json.workspace = true
+toml = "1.1"
+
+[lints]
+workspace = true

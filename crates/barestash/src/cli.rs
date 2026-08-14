@@ -9,6 +9,7 @@ pub mod endpoints;
 pub mod events;
 pub mod tokens;
 
+#[cfg(test)]
 use std::ffi::OsString;
 
 use clap::{Parser, Subcommand};
@@ -60,6 +61,7 @@ pub enum ResourceCommand {
 ///
 /// Returns a clap diagnostic for help, version, syntax, and value-validation
 /// outcomes. Callers should render that diagnostic on clap's selected stream.
+#[cfg(test)]
 pub fn parse_from<I, T>(arguments: I) -> Result<Cli, clap::Error>
 where
     I: IntoIterator<Item = T>,
