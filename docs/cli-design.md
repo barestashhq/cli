@@ -38,32 +38,34 @@ The command design should emphasize:
 
 ## Native implementation boundaries
 
-The repository root is a virtual Cargo workspace. Its packages separate the
-wire and transport libraries from cacheable internal CLI compilation units:
+The repository root is a virtual Cargo workspace. It follows the same broad
+principle as [ripgrep's core](https://github.com/BurntSushi/ripgrep/tree/master/crates/core):
+keep the product's command interface and composition glue together, and split
+out crates only where reuse or a strong security boundary justifies it.
 
-- `barestash-protocol` owns JSON/SSE wire contracts, resource identifiers,
+- `crates/protocol` (`barestash-protocol`) owns JSON/SSE wire contracts,
+  resource identifiers,
   authorization scopes, bearer-token rules, and protocol-level validation. It
   has no CLI, filesystem, terminal, browser, credential-store, or HTTP
   transport concerns.
-- `barestash-client` owns API base URL handling, private/link-local address
+- `crates/client` (`barestash-client`) owns API base URL handling,
+  private/link-local address
   protections, secure redirects, HTTP request and REST error decoding, and SSE
   transport. It depends on `barestash-protocol`.
-- `barestash-domain` owns CLI-specific values and pure transformations.
-- `barestash-infrastructure` owns local configuration, credential storage and
-  migration, file locking, and browser/terminal adapters.
-- `barestash-presentation` owns human, JSON, JSONL, and interactive terminal
-  output.
-- `barestash-application` owns authenticated orchestration and the auth,
-  endpoint, event, and token use cases.
-- `barestash` owns clap parsing, composes the internal crates, and produces the
-  executable.
+- `crates/local-state` (`barestash-local-state`) owns local configuration,
+  credential storage and migration, file locking, atomic writes, and
+  user-only permissions.
+- `crates/cli` (`barestash`) owns the executable. Its `auth`, `endpoints`,
+  `events`, and `tokens` modules each keep clap inputs, use cases, pure
+  transformations, and feature-specific presentation together. Shared output
+  rendering and browser/terminal helpers remain CLI-internal modules rather
+  than independent layers.
 
-Dependencies are acyclic. The application composes the domain,
-infrastructure, presentation, client, and protocol packages; the executable
-adds argument parsing and final error routing. HTTP and SSE transport remain in
-the client package rather than the CLI infrastructure package. The internal
-CLI packages are not published to crates.io; the supported compatibility
-surface is the executable's behavior rather than their Rust APIs.
+Dependencies are acyclic: the CLI depends on the client, local-state, and
+protocol packages; the client depends on the protocol; local-state is
+independent of the Barestash wire contract. The internal packages are not
+published to crates.io. The supported compatibility surface is the
+executable's behavior rather than Rust APIs between workspace packages.
 
 The binary never starts Node.js and no TypeScript runtime is part of release
 artifacts. The migration inventory in `rust-migration-inventory.md` records the

@@ -1,16 +1,13 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/barestash",
-    "crates/barestash-application",
-    "crates/barestash-client",
-    "crates/barestash-domain",
-    "crates/barestash-infrastructure",
-    "crates/barestash-presentation",
-    "crates/barestash-protocol",
+    "crates/cli",
+    "crates/client",
+    "crates/local-state",
+    "crates/protocol",
 ]
 default-members = [
-    "crates/barestash",
+    "crates/cli",
 ]
 
 [workspace.package]
@@ -24,12 +21,9 @@ publish = false
 readme = "README.md"
 
 [workspace.dependencies]
-barestash-application = { version = "0.0.1", path = "crates/barestash-application" }
-barestash-client = { version = "0.0.1", path = "crates/barestash-client" }
-barestash-domain = { version = "0.0.1", path = "crates/barestash-domain" }
-barestash-infrastructure = { version = "0.0.1", path = "crates/barestash-infrastructure" }
-barestash-presentation = { version = "0.0.1", path = "crates/barestash-presentation" }
-barestash-protocol = { version = "0.0.1", path = "crates/barestash-protocol" }
+barestash-client = { version = "0.0.1", path = "crates/client" }
+barestash-local-state = { version = "0.0.1", path = "crates/local-state" }
+barestash-protocol = { version = "0.0.1", path = "crates/protocol" }
 reqwest = { version = "0.12.23", default-features = false, features = ["json", "rustls-tls", "stream"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"

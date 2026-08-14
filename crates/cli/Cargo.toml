@@ -1,0 +1,55 @@
+[package]
+name = "barestash"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "A native request stash CLI for webhooks, scripts, and AI agents"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["webhook", "request-bin", "cli", "jsonl", "developer-tools"]
+categories = ["command-line-utilities", "development-tools"]
+publish.workspace = true
+readme.workspace = true
+include = [
+    "/src/**",
+    "/tests/**",
+    "/Cargo.toml",
+    "/LICENSE",
+    "/THIRD_PARTY_NOTICES.md",
+]
+
+[[bin]]
+name = "barestash"
+path = "src/main.rs"
+
+[dependencies]
+barestash-client.workspace = true
+barestash-local-state.workspace = true
+barestash-protocol.workspace = true
+base64 = "0.22.1"
+chrono = { version = "0.4.41", default-features = false, features = ["clock", "serde"] }
+clap = { version = "4.5.45", features = ["derive"] }
+home = "0.5.11"
+hostname = "0.4.1"
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+terminal_size = "0.4.3"
+thiserror.workspace = true
+tokio.workspace = true
+unicode-segmentation = "1.12.0"
+unicode-width = "0.2.1"
+url.workspace = true
+uuid = { version = "1.18.0", features = ["v4"] }
+
+[dev-dependencies]
+assert_cmd = "2.0.17"
+predicates = "3.1.3"
+serde_json.workspace = true
+tempfile = "3.21.0"
+toml = "1.1"
+wiremock.workspace = true
+
+[lints]
+workspace = true

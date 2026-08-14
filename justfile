@@ -45,8 +45,8 @@ build:
 [doc('Verify the Cargo package allowlist and build the release artifact locally')]
 [group('quality')]
 package: build
-    cmp LICENSE crates/barestash/LICENSE
-    cmp THIRD_PARTY_NOTICES.md crates/barestash/THIRD_PARTY_NOTICES.md
+    cmp LICENSE crates/cli/LICENSE
+    cmp THIRD_PARTY_NOTICES.md crates/cli/THIRD_PARTY_NOTICES.md
     package_files="$(cargo package --package barestash --locked --allow-dirty --list)"; \
       printf '%s\n' "$package_files"; \
       if printf '%s\n' "$package_files" | grep -Eq '(^|/)(node_modules|\.pnpm-store|coverage|dist)(/|$)|(^|/)(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$'; then \
