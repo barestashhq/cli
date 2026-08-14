@@ -10,8 +10,31 @@ permissions:
   contents: read
 
 jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  validate:
+    name: Validate release
+    needs: ci
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify release tag
+        shell: bash
+        run: |
+          version="$(sed -n '/^\[workspace\.package\]$/,/^\[/s/^version = "\([^"]*\)"/\1/p' Cargo.toml)"
+          if [[ "${GITHUB_REF_TYPE:-branch}" == "tag" && "${GITHUB_REF_NAME}" != "v${version}" ]]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match Cargo version v${version}." >&2
+            exit 1
+          fi
+
   build:
     name: Build ${{ matrix.target }}
+    needs: validate
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -47,19 +70,6 @@ jobs:
         with:
           toolchain: 1.88.0
           targets: ${{ matrix.target }}
-
-      - name: Verify release tag and quality gates
-        if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
-        shell: bash
-        run: |
-          version="$(sed -n '/^\[workspace\.package\]$/,/^\[/s/^version = "\([^"]*\)"/\1/p' Cargo.toml)"
-          if [[ "${GITHUB_REF_TYPE:-branch}" == "tag" && "${GITHUB_REF_NAME}" != "v${version}" ]]; then
-            echo "Tag ${GITHUB_REF_NAME} does not match Cargo version v${version}." >&2
-            exit 1
-          fi
-          cargo fmt --all --check
-          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-          cargo test --workspace --all-features --locked
 
       - name: Install cross
         if: matrix.cross
