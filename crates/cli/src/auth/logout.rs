@@ -253,3 +253,80 @@ pub(super) fn credentials_equal(
         ) if left == right
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use barestash_protocol::RestErrorCode;
+
+    use super::super::session::test_support::{session, test_context};
+    use super::*;
+
+    #[test]
+    fn rotated_credentials_for_the_same_session_compare_equal() {
+        let before = session("cls_same", "old");
+        let after = session("cls_same", "new");
+        let replacement = session("cls_other", "new");
+        assert!(credentials_equal(Some(&before), Some(&after)));
+        assert!(!credentials_equal(Some(&before), Some(&replacement)));
+    }
+
+    #[test]
+    fn logout_idempotency_codes_depend_on_credential_type() {
+        assert!(logout_error_confirms_revocation(
+            RestErrorCode::SessionExpired,
+            true
+        ));
+        assert!(logout_error_confirms_revocation(
+            RestErrorCode::PersonalAccessTokenExpired,
+            false
+        ));
+        assert!(!logout_error_confirms_revocation(
+            RestErrorCode::PersonalAccessTokenExpired,
+            true
+        ));
+    }
+
+    #[tokio::test]
+    async fn logout_revoke_does_not_send_a_concurrent_sessions_token() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/auth/sessions/current/revoke"))
+            .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+                "error": {
+                    "code": "access_token_expired",
+                    "message": "The snapshot access token expired."
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/auth/token/refresh"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let replacement = session("cls_replacement", "replacement-access");
+        let (_directory, context) = test_context(&server, Some(&replacement), None);
+        let target = LogoutRevokeTarget {
+            path: "/v1/auth/sessions/current/revoke".into(),
+            method: Method::POST,
+            token: "expired-snapshot-access".into(),
+            is_cli_session: true,
+            allow_access_token_refresh: true,
+            session_id: Some("cls_snapshot".into()),
+        };
+
+        let error = revoke_logout_target(&context, &target)
+            .await
+            .expect_err("the replacement session must not be revoked");
+        assert!(matches!(
+            error,
+            CliError::Api(response)
+                if response.error.code == RestErrorCode::AccessTokenExpired
+        ));
+    }
+}
